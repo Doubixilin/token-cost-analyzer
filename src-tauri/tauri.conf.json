@@ -7,7 +7,7 @@
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "frontendDist": "D:/GIThub/DEV/17.Token-cost/token-cost-analyzer/dist"
   },
   "app": {
     "windows": [
@@ -19,7 +19,8 @@
         "minHeight": 700,
         "center": true,
         "resizable": true,
-        "decorations": true
+        "decorations": true,
+        "url": "index.html"
       }
     ],
     "security": {

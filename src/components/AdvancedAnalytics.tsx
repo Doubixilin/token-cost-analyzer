@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import ReactECharts from "echarts-for-react";
+import echarts from "../utils/echarts-setup";
 import { useStatsStore } from "../stores/useStatsStore";
 import {
   getHourlyDistribution,
@@ -14,7 +15,6 @@ import { formatTokens } from "../utils/formatter";
 
 export default function AdvancedAnalytics() {
   const filters = useStatsStore((s) => s.filters);
-  const mountedRef = useRef(true);
   const [hourly, setHourly] = useState<{ hour: number; tokens: number; requests: number }[]>([]);
   const [modelTrend, setModelTrend] = useState<{ date: string; model: string; tokens: number }[]>([]);
   const [cumulative, setCumulative] = useState<{ date: string; cost: number }[]>([]);
@@ -24,6 +24,7 @@ export default function AdvancedAnalytics() {
   const [projectTop, setProjectTop] = useState<{ id: string; name: string; value: number; cost: number }[]>([]);
 
   const loadData = useCallback(async () => {
+    let cancelled = false;
     try {
       const [h, mt, cc, sc, sk, ad, pt] = await Promise.all([
         getHourlyDistribution(filters),
@@ -34,7 +35,7 @@ export default function AdvancedAnalytics() {
         getDistribution(filters, "agent_type"),
         getTopN(filters, "project", "tokens", 10),
       ]);
-      if (!mountedRef.current) return;
+      if (cancelled) return;
       setHourly(h);
       setModelTrend(mt);
       setCumulative(cc);
@@ -45,11 +46,11 @@ export default function AdvancedAnalytics() {
     } catch (e) {
       console.error(e);
     }
+    return () => { cancelled = true; };
   }, [filters]);
 
   useEffect(() => {
     loadData();
-    return () => { mountedRef.current = false; };
   }, [loadData]);
 
   // A. Input/Output Scatter
@@ -244,7 +245,7 @@ export default function AdvancedAnalytics() {
 
   const ChartCard = ({ option, height = 300, ariaLabel }: { option: any; height?: number; ariaLabel: string }) => (
     <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label={ariaLabel}>
-      <ReactECharts option={option} style={{ height }} lazyUpdate={true} />
+      <ReactECharts echarts={echarts} option={option} style={{ height }} lazyUpdate={true} />
     </div>
   );
 

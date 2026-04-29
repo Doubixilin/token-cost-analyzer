@@ -27,7 +27,8 @@ export default function Dashboard() {
   const setLoading = useStatsStore((s) => s.setLoading);
   const setAvailableOptions = useStatsStore((s) => s.setAvailableOptions);
   const [exporting, setExporting] = useState(false);
-  const mountedRef = useRef(true);
+  const autoSyncedRef = useRef(false);
+  const refreshVersion = useStatsStore((s) => s.refreshVersion);
 
   const fetchDashboardData = useCallback(async () => {
     const [stats, trend, options] = await Promise.all([
@@ -42,27 +43,28 @@ export default function Dashboard() {
   }, [filters, setOverview, setTrendData, setAvailableOptions]);
 
   const loadData = useCallback(async (autoSync = false) => {
-    if (!mountedRef.current) return;
+    let cancelled = false;
     setLoading(true);
     try {
       const isEmpty = await fetchDashboardData();
-      if (!mountedRef.current) return;
-      if (autoSync && isEmpty) {
+      if (cancelled) return;
+      if (autoSync && isEmpty && !autoSyncedRef.current) {
+        autoSyncedRef.current = true;
         await refreshData();
-        if (!mountedRef.current) return;
+        if (cancelled) return;
         await fetchDashboardData();
       }
     } catch (e) {
       console.error("Failed to load data:", e);
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (!cancelled) setLoading(false);
     }
+    return () => { cancelled = true; };
   }, [fetchDashboardData, setLoading]);
 
   useEffect(() => {
     loadData(true);
-    return () => { mountedRef.current = false; };
-  }, [loadData]);
+  }, [loadData, refreshVersion]);
 
   const inputTokens = overview?.total_input || 0;
   const outputTokens = overview?.total_output || 0;
@@ -150,13 +152,13 @@ export default function Dashboard() {
       {/* Secondary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
-          title="Input Tokens"
+          title="输入 Tokens"
           value={formatNumber(inputTokens)}
           icon={ArrowDownLeft}
           color="#3b82f6"
         />
         <StatCard
-          title="Output Tokens"
+          title="输出 Tokens"
           value={formatNumber(outputTokens)}
           icon={ArrowUpRight}
           color="#10b981"

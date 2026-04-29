@@ -7,27 +7,27 @@ use walkdir::WalkDir;
 use crate::models::TokenRecord;
 
 #[derive(Debug, Deserialize)]
-struct WireMessage {
+pub struct WireMessage {
     timestamp: f64,
     message: MessageWrapper,
 }
 
 #[derive(Debug, Deserialize)]
-struct MessageWrapper {
+pub struct MessageWrapper {
     #[serde(rename = "type")]
     msg_type: String,
     payload: Option<StatusPayload>,
 }
 
 #[derive(Debug, Deserialize)]
-struct StatusPayload {
+pub struct StatusPayload {
     token_usage: Option<TokenUsage>,
     #[serde(rename = "message_id")]
     message_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct TokenUsage {
+pub struct TokenUsage {
     #[serde(rename = "input_other")]
     input_other: i64,
     output: i64,
@@ -59,6 +59,12 @@ fn load_kimi_default_model() -> Option<String> {
     }
     let content = std::fs::read_to_string(&config_path).ok()?;
     let config: toml::Value = toml::from_str(&content).ok()?;
+    // Try "default_model" first: "kimi-code/kimi-for-coding" -> "kimi-for-coding"
+    if let Some(dm) = config.get("default_model").and_then(|v| v.as_str()) {
+        let model_name = dm.rsplit('/').next().unwrap_or(dm);
+        return Some(model_name.to_string());
+    }
+    // Fallback: try "model" key
     config.get("model")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())

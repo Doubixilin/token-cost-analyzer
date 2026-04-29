@@ -20,7 +20,7 @@ const navItems = [
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const { isSyncing, setSyncing, setLastSyncTime, setAvailableOptions } = useStatsStore();
+  const { isSyncing, setSyncing, setLastSyncTime, setAvailableOptions, notifyRefresh } = useStatsStore();
   const [syncMessage, setSyncMessage] = useState("");
 
   useEffect(() => {
@@ -39,6 +39,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       setLastSyncTime(new Date());
       const [sources, models, projects] = await getFilterOptions();
       setAvailableOptions(sources, models, projects);
+      notifyRefresh();
     } catch (e) {
       setSyncMessage("同步失败: " + String(e));
     } finally {

@@ -7,7 +7,8 @@ use walkdir::WalkDir;
 use crate::models::TokenRecord;
 
 #[derive(Debug, Deserialize)]
-struct ClaudeMessage {
+#[allow(dead_code)]
+pub struct ClaudeMessage {
     #[serde(rename = "type")]
     msg_type: String,
     message: Option<ClaudeInnerMessage>,
@@ -21,13 +22,13 @@ struct ClaudeMessage {
 }
 
 #[derive(Debug, Deserialize)]
-struct ClaudeInnerMessage {
+pub struct ClaudeInnerMessage {
     model: Option<String>,
     usage: Option<ClaudeUsage>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ClaudeUsage {
+pub struct ClaudeUsage {
     #[serde(rename = "input_tokens")]
     input_tokens: i64,
     #[serde(rename = "output_tokens")]
@@ -66,7 +67,8 @@ pub fn parse_all_claude_records(
     // Collect all JSONL files in projects dir
     let mut files: Vec<(PathBuf, bool)> = vec![]; // (path, is_subagent)
     
-    for entry in WalkDir::new(&projects_dir).max_depth(4).into_iter().filter_map(|e| e.ok()) {
+    let canonical_projects_dir = projects_dir.canonicalize().unwrap_or(projects_dir.clone());
+    for entry in WalkDir::new(&projects_dir).max_depth(5).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -77,7 +79,7 @@ pub fn parse_all_claude_records(
         }
         // Security: verify the file is still within projects_dir
         if let Ok(canonical) = path.canonicalize() {
-            if !canonical.starts_with(&projects_dir) {
+            if !canonical.starts_with(&canonical_projects_dir) {
                 continue;
             }
         }

@@ -1,4 +1,5 @@
 import ReactECharts from "echarts-for-react";
+import echarts from "../utils/echarts-setup";
 import type { TrendPoint } from "../types";
 import { useMemo } from "react";
 
@@ -17,8 +18,8 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
       },
       legend: {
         data: showCost
-          ? ["Input", "Output", "Cache Read", "Cache Creation", "Cost"]
-          : ["Input", "Output", "Cache Read", "Cache Creation"],
+          ? ["输入", "输出", "缓存读取", "缓存创建", "成本"]
+          : ["输入", "输出", "缓存读取", "缓存创建"],
         bottom: 0,
       },
       grid: {
@@ -58,7 +59,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
       ],
       series: [
         {
-          name: "Input",
+          name: "输入",
           type: "line",
           areaStyle: { opacity: 0.15 },
           smooth: true,
@@ -66,7 +67,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
           itemStyle: { color: "#3b82f6" },
         },
         {
-          name: "Output",
+          name: "输出",
           type: "line",
           areaStyle: { opacity: 0.15 },
           smooth: true,
@@ -74,7 +75,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
           itemStyle: { color: "#10b981" },
         },
         {
-          name: "Cache Read",
+          name: "缓存读取",
           type: "line",
           areaStyle: { opacity: 0.15 },
           smooth: true,
@@ -82,7 +83,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
           itemStyle: { color: "#f59e0b" },
         },
         {
-          name: "Cache Creation",
+          name: "缓存创建",
           type: "line",
           areaStyle: { opacity: 0.15 },
           smooth: true,
@@ -92,7 +93,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
         ...(showCost
           ? [
               {
-                name: "Cost",
+                name: "成本",
                 type: "line",
                 yAxisIndex: 1,
                 smooth: true,
@@ -117,7 +118,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
   return (
     <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
       <h3 className="text-base font-semibold text-[var(--color-text)] mb-4">消耗趋势</h3>
-      <ReactECharts option={option} style={{ height: 400 }} />
+      <ReactECharts echarts={echarts} option={option} style={{ height: 400 }} />
     </div>
   );
 }

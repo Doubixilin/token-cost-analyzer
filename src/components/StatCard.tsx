@@ -10,7 +10,7 @@ interface StatCardProps {
 
 export default function StatCard({ title, value, subValue, icon: Icon, color = "var(--color-primary)" }: StatCardProps) {
   return (
-    <div className="bg-white rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
+    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-[var(--color-text-secondary)] mb-1">{title}</p>

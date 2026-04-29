@@ -1,30 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getModelPricing, setModelPricing } from "../api/tauriCommands";
 import type { ModelPricing } from "../types";
+import { Moon, Sun } from "lucide-react";
+import { useStatsStore } from "../stores/useStatsStore";
+
+type PriceField = "input_price" | "output_price" | "cache_read_price" | "cache_creation_price";
 
 export default function Settings() {
   const [pricing, setPricing] = useState<ModelPricing[]>([]);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const { theme, setTheme } = useStatsStore();
 
-  useEffect(() => {
-    loadPricing();
-  }, []);
-
-  const loadPricing = async () => {
+  const loadPricing = useCallback(async () => {
     try {
       const data = await getModelPricing();
       setPricing(data);
     } catch (e) {
       console.error(e);
     }
-  };
+  }, []);
 
-  const updatePrice = (index: number, field: keyof ModelPricing, value: string) => {
+  useEffect(() => {
+    loadPricing();
+  }, [loadPricing]);
+
+  const updatePrice = (index: number, field: PriceField, value: string) => {
     const next = [...pricing];
     const num = parseFloat(value);
-    if (!isNaN(num)) {
-      (next[index] as any)[field] = num;
+    if (!isNaN(num) && num >= 0) {
+      next[index] = { ...next[index], [field]: num };
       setPricing(next);
     }
   };
@@ -32,9 +37,7 @@ export default function Settings() {
   const handleSave = async () => {
     setLoading(true);
     try {
-      for (const p of pricing) {
-        await setModelPricing(p);
-      }
+      await Promise.all(pricing.map((p) => setModelPricing(p)));
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
@@ -48,7 +51,7 @@ export default function Settings() {
     <div className="p-6 space-y-6">
       <h2 className="text-xl font-bold text-[var(--color-text)]">设置</h2>
 
-      <div className="bg-white rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold">模型单价配置</h3>
           <span className="text-xs text-[var(--color-text-secondary)]">单位: $ / 1M tokens</span>
@@ -56,7 +59,7 @@ export default function Settings() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-[var(--color-border)]">
+            <thead className="bg-[var(--color-bg)] border-b border-[var(--color-border)]">
               <tr>
                 <th className="px-3 py-2 text-left font-medium text-[var(--color-text-secondary)]">模型</th>
                 <th className="px-3 py-2 text-right font-medium text-[var(--color-text-secondary)]">Input</th>
@@ -123,7 +126,39 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold">外观</h3>
+        </div>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setTheme("light")}
+            aria-pressed={theme === "light"}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              theme === "light"
+                ? "bg-[var(--color-primary)] text-white"
+                : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200"
+            }`}
+          >
+            <Sun size={16} />
+            浅色
+          </button>
+          <button
+            onClick={() => setTheme("dark")}
+            aria-pressed={theme === "dark"}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              theme === "dark"
+                ? "bg-[var(--color-primary)] text-white"
+                : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200"
+            }`}
+          >
+            <Moon size={16} />
+            深色
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
         <h3 className="text-base font-semibold mb-2">关于</h3>
         <p className="text-sm text-[var(--color-text-secondary)]">
           Token Cost Analyzer v0.1.0

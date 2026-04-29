@@ -43,3 +43,6 @@ export const getModelPricing = (): Promise<ModelPricing[]> =>
 
 export const setModelPricing = (pricing: ModelPricing): Promise<void> =>
   invoke("set_model_pricing", { pricing });
+
+export const exportData = (filters: FilterParams, format: string): Promise<string> =>
+  invoke("export_data", { filters, format });

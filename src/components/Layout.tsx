@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
 import { refreshData, getFilterOptions } from "../api/tauriCommands";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const navItems = [
   { path: "/", label: "仪表盘", icon: LayoutDashboard },
@@ -23,6 +23,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { isSyncing, setSyncing, setLastSyncTime, setAvailableOptions } = useStatsStore();
   const [syncMessage, setSyncMessage] = useState("");
 
+  useEffect(() => {
+    if (!syncMessage) return;
+    const timeoutMs = syncMessage.includes("失败") ? 5000 : 3000;
+    const timer = setTimeout(() => setSyncMessage(""), timeoutMs);
+    return () => clearTimeout(timer);
+  }, [syncMessage]);
+
   const handleRefresh = async () => {
     setSyncing(true);
     setSyncMessage("正在同步数据...");
@@ -32,10 +39,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       setLastSyncTime(new Date());
       const [sources, models, projects] = await getFilterOptions();
       setAvailableOptions(sources, models, projects);
-      setTimeout(() => setSyncMessage(""), 3000);
     } catch (e) {
       setSyncMessage("同步失败: " + String(e));
-      setTimeout(() => setSyncMessage(""), 5000);
     } finally {
       setSyncing(false);
     }
@@ -44,7 +49,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-full">
       {/* Sidebar */}
-      <aside className="w-56 bg-white border-r border-[var(--color-border)] flex flex-col">
+      <aside className="w-56 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col">
         <div className="p-4 border-b border-[var(--color-border)]">
           <div className="flex items-center gap-2 text-[var(--color-primary)]">
             <Activity size={24} />
@@ -63,7 +68,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
                     ? "bg-[var(--color-primary)] text-white"
-                    : "text-[var(--color-text-secondary)] hover:bg-gray-50 hover:text-[var(--color-text)]"
+                    : "text-[var(--color-text-secondary)] hover:bg-gray-50 dark:hover:bg-slate-700 hover:text-[var(--color-text)]"
                 }`}
               >
                 <Icon size={18} />
@@ -77,7 +82,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <button
             onClick={handleRefresh}
             disabled={isSyncing}
-            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-[var(--color-text-secondary)] hover:bg-gray-50 hover:text-[var(--color-primary)] transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-[var(--color-text-secondary)] hover:bg-gray-50 dark:hover:bg-slate-700 hover:text-[var(--color-primary)] transition-colors disabled:opacity-50"
           >
             <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
             {isSyncing ? "同步中..." : "刷新数据"}

@@ -24,6 +24,9 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_token_records_timestamp ON token_records(timestamp);
         CREATE INDEX IF NOT EXISTS idx_token_records_source ON token_records(source);
         CREATE INDEX IF NOT EXISTS idx_token_records_model ON token_records(model);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_token_records_unique ON token_records(source, session_id, agent_type, COALESCE(agent_id, ''), timestamp, COALESCE(message_id, ''));
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_token_records_unique ON token_records(source, session_id, agent_id, timestamp, message_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_token_records_unique ON token_records(source, session_id, agent_id, timestamp, COALESCE(message_id, ''));
 
         CREATE TABLE IF NOT EXISTS session_summary (
             session_id TEXT PRIMARY KEY,

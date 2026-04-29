@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -51,13 +50,9 @@ pub fn find_claude_projects() -> Option<PathBuf> {
     }
 }
 
-fn parse_iso_timestamp(ts: &str) -> f64 {
+fn parse_iso_timestamp(ts: &str) -> Option<f64> {
     // Parse ISO 8601 like "2026-04-23T23:17:10.770Z"
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
-        dt.timestamp() as f64
-    } else {
-        0.0
-    }
+    chrono::DateTime::parse_from_rfc3339(ts).ok().map(|dt| dt.timestamp() as f64)
 }
 
 pub fn parse_all_claude_records(
@@ -71,7 +66,7 @@ pub fn parse_all_claude_records(
     // Collect all JSONL files in projects dir
     let mut files: Vec<(PathBuf, bool)> = vec![]; // (path, is_subagent)
     
-    for entry in WalkDir::new(&projects_dir).follow_links(true).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&projects_dir).max_depth(3).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -80,8 +75,16 @@ pub fn parse_all_claude_records(
         if ext != Some("jsonl") {
             continue;
         }
-        // Check if inside subagents dir
-        let is_subagent = path.to_string_lossy().contains("subagents");
+        // Security: verify the file is still within projects_dir
+        if let Ok(canonical) = path.canonicalize() {
+            if !canonical.starts_with(&projects_dir) {
+                continue;
+            }
+        }
+        // Check if inside subagents dir by examining path components
+        let is_subagent = path.components().any(|c| {
+            c.as_os_str().to_str() == Some("subagents")
+        });
         files.push((path.to_path_buf(), is_subagent));
     }
 
@@ -122,21 +125,30 @@ pub fn parse_all_claude_records(
 
         let file = match File::open(file_path) {
             Ok(f) => f,
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("[claude] Failed to open {:?}: {}", file_path, e);
+                continue;
+            }
         };
         let reader = BufReader::new(file);
 
-        for line in reader.lines() {
+        for (line_no, line) in reader.lines().enumerate() {
             let line = match line {
                 Ok(l) => l,
-                Err(_) => continue,
+                Err(e) => {
+                    eprintln!("[claude] Failed to read line {} from {:?}: {}", line_no, file_path, e);
+                    continue;
+                }
             };
             if line.trim().is_empty() {
                 continue;
             }
             let msg: ClaudeMessage = match serde_json::from_str(&line) {
                 Ok(m) => m,
-                Err(_) => continue,
+                Err(e) => {
+                    eprintln!("[claude] JSON parse error at line {} in {:?}: {}", line_no, file_path, e);
+                    continue;
+                }
             };
             if msg.msg_type != "assistant" {
                 continue;
@@ -151,7 +163,7 @@ pub fn parse_all_claude_records(
             };
 
             let timestamp = msg.timestamp.as_ref()
-                .map(|t| parse_iso_timestamp(t))
+                .and_then(|t| parse_iso_timestamp(t))
                 .unwrap_or(0.0);
 
             all_records.push(TokenRecord {

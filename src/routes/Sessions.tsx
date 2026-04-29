@@ -3,12 +3,7 @@ import { useStatsStore } from "../stores/useStatsStore";
 import { getSessionList, getSessionDetail } from "../api/tauriCommands";
 import type { SessionSummary, TokenRecord } from "../types";
 import dayjs from "dayjs";
-
-function formatTokens(num: number): string {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
-  if (num >= 1000) return (num / 1000).toFixed(1) + "k";
-  return num.toLocaleString();
-}
+import { formatTokens } from "../utils/formatter";
 
 export default function Sessions() {
   const { filters } = useStatsStore();
@@ -32,10 +27,10 @@ export default function Sessions() {
   }, [loadSessions]);
 
   const loadDetail = async (sessionId: string) => {
-    setSelectedSession(sessionId);
     try {
       const data = await getSessionDetail(sessionId);
       setDetail(data);
+      setSelectedSession(sessionId);
     } catch (e) {
       console.error(e);
     }
@@ -45,10 +40,10 @@ export default function Sessions() {
     <div className="p-6 space-y-6">
       <h2 className="text-xl font-bold text-[var(--color-text)]">会话浏览器</h2>
 
-      <div className="bg-white rounded-xl border border-[var(--color-border)] shadow-sm overflow-hidden">
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-[var(--color-border)]">
+            <thead className="bg-[var(--color-bg)] border-b border-[var(--color-border)]">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-[var(--color-text-secondary)]">来源</th>
                 <th className="px-4 py-3 text-left font-medium text-[var(--color-text-secondary)]">会话ID</th>
@@ -62,8 +57,7 @@ export default function Sessions() {
               {sessions.map((session) => (
                 <tr
                   key={session.session_id}
-                  onClick={() => loadDetail(session.session_id)}
-                  className={`border-b border-[var(--color-border)] cursor-pointer hover:bg-gray-50 transition-colors ${
+                  className={`border-b border-[var(--color-border)] hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors ${
                     selectedSession === session.session_id ? "bg-blue-50" : ""
                   }`}
                 >
@@ -78,7 +72,7 @@ export default function Sessions() {
                     {session.session_id.slice(0, 16)}...
                   </td>
                   <td className="px-4 py-3 text-[var(--color-text-secondary)]">
-                    {session.start_time ? dayjs.unix(session.start_time as number).format("MM-DD HH:mm") : "-"}
+                    {session.start_time ? dayjs.unix(session.start_time).format("MM-DD HH:mm") : "-"}
                   </td>
                   <td className="px-4 py-3 text-right font-medium">
                     {formatTokens(session.total_input + session.total_output + session.total_cache_read + session.total_cache_creation)}
@@ -87,7 +81,13 @@ export default function Sessions() {
                     ${session.total_cost.toFixed(4)}
                   </td>
                   <td className="px-4 py-3 text-right text-[var(--color-text-secondary)]">
-                    {session.message_count}
+                    <button
+                      onClick={() => loadDetail(session.session_id)}
+                      className="text-[var(--color-primary)] hover:underline"
+                      aria-label={`查看会话 ${session.session_id.slice(0, 8)} 详情`}
+                    >
+                      {session.message_count}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -105,7 +105,7 @@ export default function Sessions() {
           <button
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50"
           >
             上一页
           </button>
@@ -113,7 +113,7 @@ export default function Sessions() {
           <button
             onClick={() => setPage((p) => p + 1)}
             disabled={sessions.length < pageSize}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50"
           >
             下一页
           </button>
@@ -122,11 +122,11 @@ export default function Sessions() {
 
       {/* Session Detail */}
       {selectedSession && detail.length > 0 && (
-        <div className="bg-white rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
           <h3 className="text-base font-semibold mb-4">会话详情</h3>
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {detail.map((record, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 text-xs">
+              <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-[var(--color-bg)] text-xs">
                 <div className="flex items-center gap-3">
                   <span className={`px-2 py-0.5 rounded ${
                     record.agent_type === "root" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
@@ -134,7 +134,7 @@ export default function Sessions() {
                     {record.agent_type === "root" ? "主" : "子"}
                   </span>
                   <span className="text-[var(--color-text-secondary)]">
-                    {dayjs.unix(record.timestamp as number).format("HH:mm:ss")}
+                    {dayjs.unix(record.timestamp).format("HH:mm:ss")}
                   </span>
                   <span className="font-mono text-[var(--color-text-secondary)]">
                     {record.model || "unknown"}

@@ -112,14 +112,14 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
 
   if (data.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-[var(--color-border)] p-8 text-center text-[var(--color-text-secondary)]">
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-8 text-center text-[var(--color-text-secondary)]">
         暂无数据，请点击左侧"刷新数据"按钮同步
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
+    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
       <h3 className="text-base font-semibold text-[var(--color-text)] mb-4">消耗趋势</h3>
       <ReactECharts option={option} style={{ height: 400 }} />
     </div>

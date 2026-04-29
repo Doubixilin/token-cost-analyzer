@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import {
   Activity,
   DollarSign,
@@ -7,19 +7,14 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Database,
+  Download,
 } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
-import { getOverviewStats, getTrendData, getFilterOptions, refreshData } from "../api/tauriCommands";
+import { getOverviewStats, getTrendData, getFilterOptions, refreshData, exportData } from "../api/tauriCommands";
 import StatCard from "../components/StatCard";
 import TrendChart from "../components/TrendChart";
 import FilterBar from "../components/FilterBar";
-
-function formatNumber(num: number): string {
-  if (num >= 100000000) return (num / 100000000).toFixed(1) + "亿";
-  if (num >= 10000) return (num / 10000).toFixed(1) + "万";
-  if (num >= 1000) return (num / 1000).toFixed(1) + "k";
-  return num.toLocaleString();
-}
+import { formatNumber } from "../utils/formatter";
 
 export default function Dashboard() {
   const {
@@ -32,45 +27,34 @@ export default function Dashboard() {
     setLoading,
     setAvailableOptions,
   } = useStatsStore();
+  const [exporting, setExporting] = useState(false);
+
+  const fetchDashboardData = useCallback(async () => {
+    const [stats, trend, options] = await Promise.all([
+      getOverviewStats(filters),
+      getTrendData(filters, "day"),
+      getFilterOptions(),
+    ]);
+    setOverview(stats);
+    setTrendData(trend);
+    setAvailableOptions(options[0], options[1], options[2]);
+    return options[0].length === 0;
+  }, [filters, setOverview, setTrendData, setAvailableOptions]);
 
   const loadData = useCallback(async (autoSync = false) => {
     setLoading(true);
     try {
-      const [stats, trend, options] = await Promise.all([
-        getOverviewStats(filters),
-        getTrendData(filters, "day"),
-        getFilterOptions(),
-      ]);
-      setOverview(stats);
-      setTrendData(trend);
-      setAvailableOptions(options[0], options[1], options[2]);
-      
-      // Auto-sync if no data exists
-      if (autoSync && options[0].length === 0) {
-        await handleRefresh();
+      const isEmpty = await fetchDashboardData();
+      if (autoSync && isEmpty) {
+        await refreshData();
+        await fetchDashboardData();
       }
     } catch (e) {
       console.error("Failed to load data:", e);
     } finally {
       setLoading(false);
     }
-  }, [filters, setOverview, setTrendData, setLoading, setAvailableOptions]);
-
-  const handleRefresh = async () => {
-    try {
-      await refreshData();
-      const [stats, trend, options] = await Promise.all([
-        getOverviewStats(filters),
-        getTrendData(filters, "day"),
-        getFilterOptions(),
-      ]);
-      setOverview(stats);
-      setTrendData(trend);
-      setAvailableOptions(options[0], options[1], options[2]);
-    } catch (e) {
-      console.error("Refresh failed:", e);
-    }
-  };
+  }, [fetchDashboardData, setLoading]);
 
   useEffect(() => {
     loadData(true);
@@ -81,13 +65,49 @@ export default function Dashboard() {
   const cacheRead = overview?.total_cache_read || 0;
   const cacheCreation = overview?.total_cache_creation || 0;
 
+  const handleExport = async (format: string) => {
+    setExporting(true);
+    try {
+      const data = await exportData(filters, format);
+      const blob = new Blob([data], { type: format === "csv" ? "text/csv" : "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `token_export_${new Date().toISOString().slice(0, 10)}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Export failed:", e);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-[var(--color-text)]">仪表盘</h2>
-        {isLoading && (
-          <span className="text-sm text-[var(--color-text-secondary)]">加载中...</span>
-        )}
+        <div className="flex items-center gap-3">
+          {isLoading && (
+            <span className="text-sm text-[var(--color-text-secondary)]">加载中...</span>
+          )}
+          <button
+            onClick={() => handleExport("csv")}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
+          >
+            <Download size={14} />
+            {exporting ? "导出中..." : "导出 CSV"}
+          </button>
+          <button
+            onClick={() => handleExport("json")}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
+          >
+            <Download size={14} />
+            JSON
+          </button>
+        </div>
       </div>
 
       <FilterBar />

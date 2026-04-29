@@ -1,6 +1,27 @@
 import { create } from "zustand";
 import type { OverviewStats, FilterParams, TrendPoint } from "../types";
 
+type Theme = "light" | "dark";
+
+function getInitialTheme(): Theme {
+  if (typeof window !== "undefined") {
+    const saved = localStorage.getItem("theme") as Theme | null;
+    if (saved) return saved;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  return "light";
+}
+
+function applyTheme(theme: Theme) {
+  const root = document.documentElement;
+  if (theme === "dark") {
+    root.classList.add("dark");
+  } else {
+    root.classList.remove("dark");
+  }
+  localStorage.setItem("theme", theme);
+}
+
 interface StatsState {
   filters: FilterParams;
   overview: OverviewStats | null;
@@ -11,6 +32,7 @@ interface StatsState {
   availableSources: string[];
   availableModels: string[];
   availableProjects: string[];
+  theme: Theme;
   setFilters: (filters: Partial<FilterParams>) => void;
   setOverview: (overview: OverviewStats) => void;
   setTrendData: (data: TrendPoint[]) => void;
@@ -19,6 +41,7 @@ interface StatsState {
   setLastSyncTime: (time: Date) => void;
   setAvailableOptions: (sources: string[], models: string[], projects: string[]) => void;
   resetFilters: () => void;
+  setTheme: (theme: Theme) => void;
 }
 
 const defaultFilters: FilterParams = {
@@ -30,6 +53,9 @@ const defaultFilters: FilterParams = {
   agent_types: null,
 };
 
+const initialTheme = getInitialTheme();
+applyTheme(initialTheme);
+
 export const useStatsStore = create<StatsState>((set) => ({
   filters: { ...defaultFilters },
   overview: null,
@@ -40,6 +66,7 @@ export const useStatsStore = create<StatsState>((set) => ({
   availableSources: [],
   availableModels: [],
   availableProjects: [],
+  theme: initialTheme,
   setFilters: (filters) => set((state) => ({ filters: { ...state.filters, ...filters } })),
   setOverview: (overview) => set({ overview }),
   setTrendData: (trendData) => set({ trendData }),
@@ -49,4 +76,8 @@ export const useStatsStore = create<StatsState>((set) => ({
   setAvailableOptions: (availableSources, availableModels, availableProjects) =>
     set({ availableSources, availableModels, availableProjects }),
   resetFilters: () => set({ filters: { ...defaultFilters } }),
+  setTheme: (theme) => {
+    applyTheme(theme);
+    set({ theme });
+  },
 }));

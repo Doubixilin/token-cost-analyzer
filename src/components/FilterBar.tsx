@@ -1,6 +1,7 @@
 import { useStatsStore } from "../stores/useStatsStore";
 import { Calendar, Filter, X } from "lucide-react";
 import dayjs from "dayjs";
+import { getSourceLabel } from "../utils/formatter";
 
 const timePresets = [
   { label: "全部", days: null },
@@ -43,7 +44,7 @@ export default function FilterBar() {
     filters.agent_types !== null;
 
   return (
-    <div className="bg-white rounded-xl border border-[var(--color-border)] p-4 shadow-sm space-y-4">
+    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 shadow-sm space-y-4">
       <div className="flex items-center gap-2 mb-2">
         <Filter size={16} className="text-[var(--color-primary)]" />
         <span className="text-sm font-semibold text-[var(--color-text)]">筛选器</span>
@@ -75,7 +76,7 @@ export default function FilterBar() {
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 isActive
                   ? "bg-[var(--color-primary)] text-white"
-                  : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200"
+                  : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600"
               }`}
             >
               {preset.label}
@@ -100,10 +101,10 @@ export default function FilterBar() {
               className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                 filters.sources?.includes(source)
                   ? "bg-[var(--color-primary)] text-white"
-                  : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200"
+                  : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600"
               }`}
             >
-              {source === "kimi" ? "Kimi Code" : source === "claude" ? "Claude Code" : source}
+              {getSourceLabel(source)}
             </button>
           ))}
         </div>
@@ -118,10 +119,11 @@ export default function FilterBar() {
               <button
                 key={model}
                 onClick={() => toggleFilter("models", model)}
+                aria-pressed={filters.models?.includes(model) || false}
                 className={`px-2 py-0.5 rounded text-xs transition-colors ${
                   filters.models?.includes(model)
                     ? "bg-[var(--color-primary)] text-white"
-                    : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200"
+                    : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600"
                 }`}
               >
                 {model}
@@ -138,10 +140,11 @@ export default function FilterBar() {
           <button
             key={type}
             onClick={() => toggleFilter("agent_types", type)}
+            aria-pressed={filters.agent_types?.includes(type) || false}
             className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
               filters.agent_types?.includes(type)
                 ? "bg-[var(--color-primary)] text-white"
-                : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200"
+                : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600"
             }`}
           >
             {type === "root" ? "主代理" : "子代理"}

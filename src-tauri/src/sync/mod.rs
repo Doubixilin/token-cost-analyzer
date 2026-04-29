@@ -10,26 +10,29 @@ pub fn sync_all_data(conn: &mut Connection) -> Result<usize, Box<dyn std::error:
         println!("[{}] Progress: {}/{}", phase, current, total);
     };
     
-    let kimi_records = parse_all_kimi_records(&mut progress)?;
-    let claude_records = parse_all_claude_records(&mut progress)?;
+    let kimi_records = parse_all_kimi_records(&mut progress).unwrap_or_else(|e| {
+        eprintln!("[sync] Failed to parse Kimi records: {}", e);
+        vec![]
+    });
+    let claude_records = parse_all_claude_records(&mut progress).unwrap_or_else(|e| {
+        eprintln!("[sync] Failed to parse Claude records: {}", e);
+        vec![]
+    });
     
     let tx = conn.transaction()?;
     
     // Insert Kimi records
-    total_inserted += insert_records(&tx, &kimi_records, "kimi")?;
+    total_inserted += insert_records(&tx, &kimi_records)?;
     
     // Insert Claude records
-    total_inserted += insert_records(&tx, &claude_records, "claude")?;
+    total_inserted += insert_records(&tx, &claude_records)?;
     
     tx.commit()?;
-    
-    // Recalculate session summaries
-    recalc_session_summaries(conn)?;
     
     Ok(total_inserted)
 }
 
-fn insert_records(tx: &Transaction, records: &[TokenRecord], source: &str) -> Result<usize, rusqlite::Error> {
+fn insert_records(tx: &Transaction, records: &[TokenRecord]) -> Result<usize, rusqlite::Error> {
     if records.is_empty() {
         return Ok(0);
     }
@@ -43,7 +46,7 @@ fn insert_records(tx: &Transaction, records: &[TokenRecord], source: &str) -> Re
     let mut count = 0;
     for record in records {
         stmt.execute(rusqlite::params![
-            source,
+            &record.source,
             &record.session_id,
             &record.agent_type,
             record.agent_id.as_ref(),
@@ -63,7 +66,7 @@ fn insert_records(tx: &Transaction, records: &[TokenRecord], source: &str) -> Re
     Ok(count)
 }
 
-fn recalc_session_summaries(conn: &mut Connection) -> Result<(), rusqlite::Error> {
+fn recalc_session_summaries(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute(
         "DELETE FROM session_summary",
         [],
@@ -94,24 +97,36 @@ fn recalc_session_summaries(conn: &mut Connection) -> Result<(), rusqlite::Error
 }
 
 pub fn recalc_costs(conn: &mut Connection) -> Result<(), rusqlite::Error> {
-    conn.execute(
-        "UPDATE token_records SET cost_estimate = 0",
-        [],
-    )?;
+    let tx = conn.transaction()?;
     
-    conn.execute(
-        "UPDATE token_records 
-        SET cost_estimate = (
-            input_tokens * COALESCE((SELECT input_price FROM model_pricing WHERE model = COALESCE(token_records.model, 'unknown')), 0) +
-            output_tokens * COALESCE((SELECT output_price FROM model_pricing WHERE model = COALESCE(token_records.model, 'unknown')), 0) +
-            cache_read_tokens * COALESCE((SELECT cache_read_price FROM model_pricing WHERE model = COALESCE(token_records.model, 'unknown')), 0) +
-            cache_creation_tokens * COALESCE((SELECT cache_creation_price FROM model_pricing WHERE model = COALESCE(token_records.model, 'unknown')), 0)
-        ) / 1000000.0",
-        [],
-    )?;
+    tx.execute("UPDATE token_records SET cost_estimate = 0", [])?;
+    
+    // Get distinct models to avoid correlated subqueries
+    let models: Vec<String> = tx.prepare("SELECT DISTINCT COALESCE(model, 'unknown') FROM token_records")?
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+    
+    for model in models {
+        let pricing = tx.query_row(
+            "SELECT input_price, output_price, cache_read_price, cache_creation_price FROM model_pricing WHERE model = ?1",
+            [&model],
+            |row| Ok((
+                row.get::<_, f64>(0).unwrap_or(0.0),
+                row.get::<_, f64>(1).unwrap_or(0.0),
+                row.get::<_, f64>(2).unwrap_or(0.0),
+                row.get::<_, f64>(3).unwrap_or(0.0),
+            ))
+        ).unwrap_or((0.0, 0.0, 0.0, 0.0));
+        
+        tx.execute(
+            "UPDATE token_records SET cost_estimate = (input_tokens * ?1 + output_tokens * ?2 + cache_read_tokens * ?3 + cache_creation_tokens * ?4) / 1000000.0 WHERE COALESCE(model, 'unknown') = ?5",
+            rusqlite::params![pricing.0, pricing.1, pricing.2, pricing.3, model],
+        )?;
+    }
     
     // Recalc session summaries with new costs
-    recalc_session_summaries(conn)?;
+    recalc_session_summaries(&tx)?;
     
+    tx.commit()?;
     Ok(())
 }

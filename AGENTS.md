@@ -8,36 +8,21 @@ Token Cost Analyzer - AI 编程助手 Token 消耗与成本分析工具
 
 ## 已知问题（待修复）
 
-### 🔴 高优先级：Release 模式打开白屏 / localhost 拒绝连接
+### ~~🔴 高优先级：Release 模式打开白屏 / localhost 拒绝连接~~ ✅ 已修复
 
-**现象**：`cargo build --release` 或 `npm run tauri build -- --no-bundle` 生成的 exe，双击运行后窗口显示：
-> 嗯… 无法访问此页面。localhost 拒绝连接。ERR_CONNECTION_REFUSED
+**根因**：`Cargo.toml` 中 `tauri = { version = "2", features = [] }` 缺少 `"custom-protocol"` feature。
+Tauri 的 `build.rs` 在没有此 feature 时设置 `cfg(dev)=true`，导致前端资源未嵌入，运行时回退到 `devUrl`。
 
-**排查记录**：
-1. Vite `base: "./"` 已改为相对路径，dist/index.html 中资源路径已变为 `./assets/...`
-2. 多次清理 `target/release/build/token-cost-analyzer-*` 缓存后重新编译，问题依旧
-3. `tauri-codegen-assets` 目录在构建输出中不存在，怀疑 Tauri v2 资源嵌入机制未触发
-4. `tauri.conf.json` 中已尝试添加 `"url": "index.html"`，无效
-5. `frontendDist` 已尝试相对路径 `"../dist"` 和绝对路径 `"D:/GIThub/.../dist"`，均无效
-6. 字符串搜索发现 exe 中包含 `http://localhost:1420` 和 `index.html`，说明配置被读取但窗口仍连 devUrl
+**修复**：
+1. `src-tauri/Cargo.toml`: `features = ["custom-protocol"]`
+2. `src-tauri/tauri.conf.json`: `frontendDist` 从绝对路径改为 `"../dist"`
 
-**可能原因**：
-- Tauri v2 的 `tauri-build` 构建脚本在 Windows 上未正确生成嵌入资源
-- `generate_context!()` 宏在编译时未把 dist/ 资源正确嵌入
-- `tauri.conf.json` 缺少某个 v2 必填字段导致配置回退到 devUrl
-- 或需用 `npm run tauri build`（完整流程）而非单独 `cargo build --release`
-
-**建议排查方向**：
-1. 检查 `tauri-build = "2.5.6"` 是否存在已知 Windows 资源嵌入 bug
-2. 对比全新 Tauri v2 项目模板的 `tauri.conf.json` 逐项检查缺失字段
-3. 尝试降级 `tauri-build` 到 `2.0.x` 或 `2.1.x`
-4. 检查 `Cargo.toml` 中 `tauri` feature 是否缺少 `protocol-asset` 等
-5. 用 `tauri inspect` 或增加日志查看运行时实际加载的 URL
+**重要规则**：永远不要直接运行 `cargo build --release`，必须通过 `npm run tauri build` 构建。
 
 ### 🟡 中优先级
 
 - **Claude subagents max_depth**：已修复（`max_depth(3)` → `max_depth(4)`）
-- **模型定价显示 $0.0000**：自定义模型未在 `model_pricing` 表中插入默认值
+- **模型定价显示 $0.0000**：自定义模型未在 `model_pricing` 表中插入默认值（已通过 `ensure_all_models_priced` 自动补充）
 - **图表导出**：Word 图表截图方案废弃，当前使用 Excel 纯数据导出
 
 ## 环境配置
@@ -61,31 +46,11 @@ npm run build        # 输出到 dist/
 cd src-tauri
 cargo check
 
-# Rust Release 编译（注意：当前有 localhost 白屏问题）
+# Rust Release 编译（⚠️ 禁止直接使用！会导致白屏）
 cargo build --release
 
-# Tauri Release 构建（推荐尝试修复后使用）
+# Tauri Release 构建（✅ 必须用此命令，CLI 自动注入 custom-protocol feature）
 npm run tauri build -- --no-bundle
-```
-
-### 代理设置（GitHub CLI + Git）
-
-系统有本地代理 `127.0.0.1:33210`，浏览器可走通 GitHub，但 CLI 默认不走：
-
-```powershell
-# Git 全局代理（已配置，所有仓库生效）
-git config --global http.proxy http://127.0.0.1:33210
-git config --global https.proxy http://127.0.0.1:33210
-
-# GitHub CLI 代理（需每次设置环境变量）
-$env:HTTP_PROXY = "http://127.0.0.1:33210"
-$env:HTTPS_PROXY = "http://127.0.0.1:33210"
-
-# 永久生效：写入 PowerShell Profile
-notepad $PROFILE
-# 添加：
-# $env:HTTP_PROXY = "http://127.0.0.1:33210"
-# $env:HTTPS_PROXY = "http://127.0.0.1:33210"
 ```
 
 ### GitHub CLI 使用
@@ -126,27 +91,40 @@ gh release delete-asset v0.1.0 token-cost-analyzer.exe --yes
 
 ### 新增文件
 - `src/components/AdvancedAnalytics.tsx` — ABCD 四维度高级分析
+- `src/components/ErrorBoundary.tsx` — React 错误边界
 - `src/utils/excelExport.ts` — Excel 多 Sheet 导出
-- `src/utils/reportExport.ts` — Word 报告导出（已废弃）
-- `MACOS_BUILD.md` — macOS 打包指南
+- `MACOS_BUILD.md` — macOS 打包指南 v1
+- `MACOS_BUILD_V2.md` — macOS 打包指南 v2（含修复说明）
 - `build-mac.sh` — macOS 一键打包脚本
+- `src-tauri/Entitlements.plist` — macOS 权限配置
 
-### 修改文件
-- `vite.config.ts` — `base: "./"` 相对路径
-- `src-tauri/tauri.conf.json` — bundle targets: `["nsis", "dmg"]`, url: "index.html"
-- `src-tauri/src/parsers/claude.rs` — max_depth(3) -> max_depth(4)
-- `src/routes/Analytics.tsx` — 添加 Excel 导出按钮
-- `src/routes/Dashboard.tsx` — 移除 AdvancedAnalytics
+### 修改文件（本次修复）
+- `src-tauri/Cargo.toml` — 添加 `custom-protocol` feature + `csv` 依赖，移除 `md5`，简化 `crate-type`
+- `src-tauri/tauri.conf.json` — `frontendDist` 改相对路径，添加 macOS bundle 配置
+- `src-tauri/src/lib.rs` — CSV 注入修复，Mutex 中毒修复，refresh_data 拆分
+- `src-tauri/src/db/mod.rs` — `get_db_path` 返回 Result，WAL 模式，删除 `get_connection`
+- `src-tauri/src/sync/mod.rs` — 拆分 parse/insert，优化 recalc_costs SQL
+- `src-tauri/src/models/mod.rs` — 删除 `SyncProgress` 死代码
+- `src-tauri/src/db/schema.rs` — 删除 `project_aliases` 表
+- `src/App.tsx` — 添加 ErrorBoundary 包裹
+- `src/routes/Dashboard.tsx` — 细粒度 selector + 取消守卫
+- `src/routes/Analytics.tsx` — 细粒度 selector + 取消守卫
+- `src/routes/Sessions.tsx` — 细粒度 selector + 取消守卫
+- `src/components/AdvancedAnalytics.tsx` — O(n²) 优化 + 取消守卫
+- `build-mac.sh` — 添加 Xcode 检查 + 产物验证
+
+### 删除文件
+- `src/utils/reportExport.ts` — 死代码（未被任何文件导入）
 
 ## 打包分发
 
 ### Windows 便携版
 - **产物**：`src-tauri/target/release/token-cost-analyzer.exe`
 - **大小**：约 10.6 MB
-- **注意**：当前 release exe 有 localhost 白屏问题，修复前不要对外发布
+- **构建命令**：`npm run tauri build -- --no-bundle`（必须用 tauri CLI）
 
 ### macOS 打包
-- 见 `MACOS_BUILD.md`
+- 见 `MACOS_BUILD_V2.md`
 - 需在 Mac 上执行，无法从 Windows 交叉编译
 
 ## 数据路径

@@ -57,12 +57,6 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             last_scan_time REAL,
             last_record_count INTEGER
         );
-
-        CREATE TABLE IF NOT EXISTS project_aliases (
-            md5_hash TEXT PRIMARY KEY,
-            project_path TEXT,
-            alias TEXT
-        );
         "#,
     )?;
 

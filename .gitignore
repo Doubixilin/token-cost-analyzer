@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code local config (contains permissions, local paths)
+.claude/
+MEMORY.md

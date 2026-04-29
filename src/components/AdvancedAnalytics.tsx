@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { useStatsStore } from "../stores/useStatsStore";
 import {
@@ -13,7 +13,8 @@ import {
 import { formatTokens } from "../utils/formatter";
 
 export default function AdvancedAnalytics() {
-  const { filters } = useStatsStore();
+  const filters = useStatsStore((s) => s.filters);
+  const mountedRef = useRef(true);
   const [hourly, setHourly] = useState<{ hour: number; tokens: number; requests: number }[]>([]);
   const [modelTrend, setModelTrend] = useState<{ date: string; model: string; tokens: number }[]>([]);
   const [cumulative, setCumulative] = useState<{ date: string; cost: number }[]>([]);
@@ -33,6 +34,7 @@ export default function AdvancedAnalytics() {
         getDistribution(filters, "agent_type"),
         getTopN(filters, "project", "tokens", 10),
       ]);
+      if (!mountedRef.current) return;
       setHourly(h);
       setModelTrend(mt);
       setCumulative(cc);
@@ -47,6 +49,7 @@ export default function AdvancedAnalytics() {
 
   useEffect(() => {
     loadData();
+    return () => { mountedRef.current = false; };
   }, [loadData]);
 
   // A. Input/Output Scatter
@@ -125,21 +128,19 @@ export default function AdvancedAnalytics() {
     };
   }, [hourly]);
 
-  // B2. Model Migration Trend (stacked area)
+  // B2. Model Migration Trend (stacked area) — O(n) via Map lookup
   const modelTrendOption = useMemo(() => {
     const dates = Array.from(new Set(modelTrend.map((d) => d.date))).sort();
     const models = Array.from(new Set(modelTrend.map((d) => d.model)));
     const colors = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#f97316", "#84cc16"];
+    const trendMap = new Map(modelTrend.map((d) => [`${d.date}::${d.model}`, d.tokens]));
     const series = models.map((model, i) => ({
       name: model,
       type: "line",
       stack: "model",
       areaStyle: { opacity: 0.2 },
       smooth: true,
-      data: dates.map((date) => {
-        const item = modelTrend.find((d) => d.date === date && d.model === model);
-        return item ? item.tokens : 0;
-      }),
+      data: dates.map((date) => trendMap.get(`${date}::${model}`) || 0),
       itemStyle: { color: colors[i % colors.length] },
     }));
     return {

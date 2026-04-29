@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { FileSpreadsheet } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
@@ -9,7 +9,10 @@ import { exportExcelReport } from "../utils/excelExport";
 import AdvancedAnalytics from "../components/AdvancedAnalytics";
 
 export default function Analytics() {
-  const { filters, overview, trendData } = useStatsStore();
+  const filters = useStatsStore((s) => s.filters);
+  const overview = useStatsStore((s) => s.overview);
+  const trendData = useStatsStore((s) => s.trendData);
+  const mountedRef = useRef(true);
   const [modelDist, setModelDist] = useState<DistributionItem[]>([]);
   const [sourceDist, setSourceDist] = useState<DistributionItem[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
@@ -26,6 +29,7 @@ export default function Analytics() {
         getHeatmapData(filters, currentYear),
         getTopN(filters, "session", "tokens", 10),
       ]);
+      if (!mountedRef.current) return;
       setModelDist(models);
       setSourceDist(sources);
       setHeatmapData(heatmap);
@@ -37,6 +41,7 @@ export default function Analytics() {
 
   useEffect(() => {
     loadData();
+    return () => { mountedRef.current = false; };
   }, [loadData]);
 
   const modelPieOption = useMemo(() => ({

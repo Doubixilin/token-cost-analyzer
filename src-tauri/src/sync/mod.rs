@@ -2,40 +2,46 @@ use rusqlite::{Connection, Transaction};
 use crate::models::TokenRecord;
 use crate::parsers::{parse_all_kimi_records, parse_all_claude_records};
 
-pub fn sync_all_data(conn: &mut Connection) -> Result<usize, Box<dyn std::error::Error>> {
-    let mut total_inserted = 0usize;
-    
-    // Parse Kimi records
+/// 解析所有数据文件（不持有数据库锁，可在锁外执行）
+pub fn parse_all_records() -> Result<Vec<TokenRecord>, Box<dyn std::error::Error>> {
     let mut progress = |phase: &str, current: usize, total: usize| {
         println!("[{}] Progress: {}/{}", phase, current, total);
     };
-    
-    let kimi_records = parse_all_kimi_records(&mut progress).unwrap_or_else(|e| {
-        eprintln!("[sync] Failed to parse Kimi records: {}", e);
-        vec![]
-    });
-    let claude_records = parse_all_claude_records(&mut progress).unwrap_or_else(|e| {
-        eprintln!("[sync] Failed to parse Claude records: {}", e);
-        vec![]
-    });
-    
+
+    let mut all_records = Vec::new();
+
+    match parse_all_kimi_records(&mut progress) {
+        Ok(records) => all_records.extend(records),
+        Err(e) => eprintln!("[sync] Failed to parse Kimi records: {}", e),
+    }
+    match parse_all_claude_records(&mut progress) {
+        Ok(records) => all_records.extend(records),
+        Err(e) => eprintln!("[sync] Failed to parse Claude records: {}", e),
+    }
+
+    Ok(all_records)
+}
+
+/// 将已解析的记录插入数据库（需持有数据库锁）
+pub fn insert_parsed_records(conn: &mut Connection, records: &[TokenRecord]) -> Result<usize, Box<dyn std::error::Error>> {
     let tx = conn.transaction()?;
-    
+
     // Clean up synthetic error messages from previous versions
     tx.execute("DELETE FROM token_records WHERE model = '<synthetic>'", [])?;
-    
-    // Insert Kimi records
-    total_inserted += insert_records(&tx, &kimi_records)?;
-    
-    // Insert Claude records
-    total_inserted += insert_records(&tx, &claude_records)?;
-    
+
+    let count = insert_records(&tx, records)?;
+
     tx.commit()?;
-    
+
     // Ensure all models in token_records have a pricing entry (default to 0)
     ensure_all_models_priced(conn)?;
-    
-    Ok(total_inserted)
+
+    Ok(count)
+}
+
+pub fn sync_all_data(conn: &mut Connection) -> Result<usize, Box<dyn std::error::Error>> {
+    let records = parse_all_records()?;
+    insert_parsed_records(conn, &records)
 }
 
 fn insert_records(tx: &Transaction, records: &[TokenRecord]) -> Result<usize, rusqlite::Error> {
@@ -120,35 +126,30 @@ fn ensure_all_models_priced(conn: &mut Connection) -> Result<(), rusqlite::Error
 
 pub fn recalc_costs(conn: &mut Connection) -> Result<(), rusqlite::Error> {
     let tx = conn.transaction()?;
-    
-    tx.execute("UPDATE token_records SET cost_estimate = 0", [])?;
-    
-    // Get distinct models to avoid correlated subqueries
-    let models: Vec<String> = tx.prepare("SELECT DISTINCT COALESCE(model, 'unknown') FROM token_records")?
-        .query_map([], |row| row.get(0))?
-        .collect::<Result<Vec<_>, rusqlite::Error>>()?;
-    
-    for model in models {
-        let pricing = tx.query_row(
-            "SELECT input_price, output_price, cache_read_price, cache_creation_price FROM model_pricing WHERE model = ?1",
-            [&model],
-            |row| Ok((
-                row.get::<_, f64>(0).unwrap_or(0.0),
-                row.get::<_, f64>(1).unwrap_or(0.0),
-                row.get::<_, f64>(2).unwrap_or(0.0),
-                row.get::<_, f64>(3).unwrap_or(0.0),
-            ))
-        ).unwrap_or((0.0, 0.0, 0.0, 0.0));
-        
-        tx.execute(
-            "UPDATE token_records SET cost_estimate = (input_tokens * ?1 + output_tokens * ?2 + cache_read_tokens * ?3 + cache_creation_tokens * ?4) / 1000000.0 WHERE COALESCE(model, 'unknown') = ?5",
-            rusqlite::params![pricing.0, pricing.1, pricing.2, pricing.3, model],
-        )?;
-    }
-    
+
+    // Single UPDATE with JOIN to model_pricing — replaces N+1 full-table scans
+    tx.execute(
+        "UPDATE token_records SET cost_estimate = (
+            COALESCE(input_tokens, 0) * mp.input_price +
+            COALESCE(output_tokens, 0) * mp.output_price +
+            COALESCE(cache_read_tokens, 0) * mp.cache_read_price +
+            COALESCE(cache_creation_tokens, 0) * mp.cache_creation_price
+        ) / 1000000.0
+        FROM model_pricing mp
+        WHERE COALESCE(token_records.model, 'unknown') = mp.model",
+        [],
+    )?;
+
+    // Zero out records with no matching pricing entry
+    tx.execute(
+        "UPDATE token_records SET cost_estimate = 0
+        WHERE COALESCE(model, 'unknown') NOT IN (SELECT model FROM model_pricing)",
+        [],
+    )?;
+
     // Recalc session summaries with new costs
     recalc_session_summaries(&tx)?;
-    
+
     tx.commit()?;
     Ok(())
 }

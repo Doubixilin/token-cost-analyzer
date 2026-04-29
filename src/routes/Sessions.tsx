@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useStatsStore } from "../stores/useStatsStore";
 import { getSessionList, getSessionDetail } from "../api/tauriCommands";
 import type { SessionSummary, TokenRecord } from "../types";
@@ -6,7 +6,8 @@ import dayjs from "dayjs";
 import { formatTokens } from "../utils/formatter";
 
 export default function Sessions() {
-  const { filters } = useStatsStore();
+  const filters = useStatsStore((s) => s.filters);
+  const mountedRef = useRef(true);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [detail, setDetail] = useState<TokenRecord[]>([]);
@@ -16,6 +17,7 @@ export default function Sessions() {
   const loadSessions = useCallback(async () => {
     try {
       const data = await getSessionList(filters, pageSize, page * pageSize);
+      if (!mountedRef.current) return;
       setSessions(data);
     } catch (e) {
       console.error(e);
@@ -24,6 +26,7 @@ export default function Sessions() {
 
   useEffect(() => {
     loadSessions();
+    return () => { mountedRef.current = false; };
   }, [loadSessions]);
 
   const loadDetail = async (sessionId: string) => {

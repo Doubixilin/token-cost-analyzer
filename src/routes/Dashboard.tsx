@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import {
   Activity,
   DollarSign,
@@ -18,17 +18,16 @@ import FilterBar from "../components/FilterBar";
 import { formatNumber } from "../utils/formatter";
 
 export default function Dashboard() {
-  const {
-    filters,
-    overview,
-    trendData,
-    isLoading,
-    setOverview,
-    setTrendData,
-    setLoading,
-    setAvailableOptions,
-  } = useStatsStore();
+  const filters = useStatsStore((s) => s.filters);
+  const overview = useStatsStore((s) => s.overview);
+  const trendData = useStatsStore((s) => s.trendData);
+  const isLoading = useStatsStore((s) => s.isLoading);
+  const setOverview = useStatsStore((s) => s.setOverview);
+  const setTrendData = useStatsStore((s) => s.setTrendData);
+  const setLoading = useStatsStore((s) => s.setLoading);
+  const setAvailableOptions = useStatsStore((s) => s.setAvailableOptions);
   const [exporting, setExporting] = useState(false);
+  const mountedRef = useRef(true);
 
   const fetchDashboardData = useCallback(async () => {
     const [stats, trend, options] = await Promise.all([
@@ -43,22 +42,26 @@ export default function Dashboard() {
   }, [filters, setOverview, setTrendData, setAvailableOptions]);
 
   const loadData = useCallback(async (autoSync = false) => {
+    if (!mountedRef.current) return;
     setLoading(true);
     try {
       const isEmpty = await fetchDashboardData();
+      if (!mountedRef.current) return;
       if (autoSync && isEmpty) {
         await refreshData();
+        if (!mountedRef.current) return;
         await fetchDashboardData();
       }
     } catch (e) {
       console.error("Failed to load data:", e);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [fetchDashboardData, setLoading]);
 
   useEffect(() => {
     loadData(true);
+    return () => { mountedRef.current = false; };
   }, [loadData]);
 
   const inputTokens = overview?.total_input || 0;

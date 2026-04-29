@@ -98,14 +98,6 @@ pub struct FilterParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncProgress {
-    pub phase: String,
-    pub current: usize,
-    pub total: usize,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HourlyPoint {
     pub hour: i64,
     pub tokens: i64,

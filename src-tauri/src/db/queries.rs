@@ -13,13 +13,6 @@ fn build_where_clause(filters: &FilterParams) -> (String, Vec<rusqlite::types::V
         conditions.push("timestamp <= ?".to_string());
         params.push(end.into());
     }
-    if let Some(agent_types) = &filters.agent_types {
-        if !agent_types.is_empty() {
-            let placeholders: Vec<String> = agent_types.iter().map(|_| "?".to_string()).collect();
-            conditions.push(format!("agent_type IN ({})", placeholders.join(", ")));
-            params.extend(agent_types.iter().map(|s| s.clone().into()));
-        }
-    }
     if let Some(sources) = &filters.sources {
         if !sources.is_empty() {
             let placeholders: Vec<String> = sources.iter().map(|_| "?".to_string()).collect();
@@ -104,7 +97,7 @@ pub fn get_trend_data(conn: &Connection, filters: &FilterParams, granularity: &s
         "day" => "%Y-%m-%d",
         "week" => "%Y-W%W",
         "month" => "%Y-%m",
-        _ => return Err(rusqlite::Error::InvalidParameterName(format!("Invalid granularity: {}", granularity))),
+        _ => return Err(rusqlite::Error::InvalidParameterName(format!("invalid granularity: {}", granularity))),
     };
     let sql = format!(
         "SELECT strftime('{}', datetime(timestamp, 'unixepoch')), SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens), SUM(cost_estimate) FROM token_records {} GROUP BY strftime('{}', datetime(timestamp, 'unixepoch')) ORDER BY 1",
@@ -131,7 +124,7 @@ pub fn get_distribution(conn: &Connection, filters: &FilterParams, dimension: &s
         "source" => "source",
         "agent_type" => "agent_type",
         "project_path" => "COALESCE(project_path, 'unknown')",
-        _ => return Err(rusqlite::Error::InvalidParameterName(format!("Invalid dimension: {}", dimension))),
+        _ => return Err(rusqlite::Error::InvalidParameterName(format!("invalid dimension: {}", dimension))),
     };
     let sql = format!(
         "SELECT {}, SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens), SUM(cost_estimate) FROM token_records {} GROUP BY {} ORDER BY 2 DESC",
@@ -191,14 +184,14 @@ pub fn get_top_n(conn: &Connection, filters: &FilterParams, dimension: &str, met
         "session" => ("session_id", "session_id"),
         "project" => ("COALESCE(project_path, 'unknown')", "COALESCE(project_path, 'unknown')"),
         "model" => ("COALESCE(model, 'unknown')", "COALESCE(model, 'unknown')"),
-        _ => return Err(rusqlite::Error::InvalidParameterName(format!("Invalid dimension: {}", dimension))),
+        _ => return Err(rusqlite::Error::InvalidParameterName(format!("invalid dimension: {}", dimension))),
     };
     let metric_col = match metric {
         "tokens" => "SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens)",
         "cost" => "SUM(cost_estimate)",
         "input" => "SUM(input_tokens)",
         "output" => "SUM(output_tokens)",
-        _ => return Err(rusqlite::Error::InvalidParameterName(format!("Invalid metric: {}", metric))),
+        _ => return Err(rusqlite::Error::InvalidParameterName(format!("invalid metric: {}", metric))),
     };
     let sql = format!(
         "SELECT {}, {}, SUM(cost_estimate) FROM token_records {} GROUP BY {} ORDER BY 2 DESC LIMIT ?",
@@ -221,23 +214,21 @@ pub fn get_top_n(conn: &Connection, filters: &FilterParams, dimension: &str, met
 pub fn get_heatmap_data(conn: &Connection, filters: &FilterParams, year: i32) -> Result<Vec<HeatmapPoint>> {
     let (mut where_clause, mut params) = build_where_clause(filters);
     let year_start = chrono::NaiveDate::from_ymd_opt(year, 1, 1)
-        .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("Invalid year: {}", year)))?;
+        .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("invalid year: {}", year)))?;
     let year_end = chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
-        .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("Invalid year: {}", year + 1)))?;
+        .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("invalid year: {}", year + 1)))?;
     let start_ts = year_start.and_hms_opt(0, 0, 0)
-        .ok_or_else(|| rusqlite::Error::InvalidParameterName("Invalid start time".to_string()))?
+        .ok_or_else(|| rusqlite::Error::InvalidParameterName("invalid start time".to_string()))?
         .and_utc().timestamp() as f64;
     let end_ts = year_end.and_hms_opt(0, 0, 0)
-        .ok_or_else(|| rusqlite::Error::InvalidParameterName("Invalid end time".to_string()))?
+        .ok_or_else(|| rusqlite::Error::InvalidParameterName("invalid end time".to_string()))?
         .and_utc().timestamp() as f64;
     
     if where_clause.is_empty() {
-        where_clause = "WHERE timestamp >= ? AND timestamp < ?".to_string();
+        where_clause = format!("WHERE timestamp >= {} AND timestamp < {}", start_ts, end_ts);
     } else {
-        where_clause = format!("{} AND timestamp >= ? AND timestamp < ?", where_clause);
+        where_clause = format!("{} AND timestamp >= {} AND timestamp < {}", where_clause, start_ts, end_ts);
     }
-    params.push(start_ts.into());
-    params.push(end_ts.into());
 
     let sql = format!(
         "SELECT strftime('%Y-%m-%d', datetime(timestamp, 'unixepoch')), SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens) FROM token_records {} GROUP BY strftime('%Y-%m-%d', datetime(timestamp, 'unixepoch')) ORDER BY 1",
@@ -322,6 +313,89 @@ pub fn set_model_pricing(conn: &Connection, pricing: &ModelPricing) -> Result<()
         ],
     )?;
     Ok(())
+}
+
+pub fn get_hourly_distribution(conn: &Connection, filters: &FilterParams) -> Result<Vec<HourlyPoint>> {
+    let (where_clause, params) = build_where_clause(filters);
+    let sql = format!(
+        "SELECT CAST(strftime('%H', datetime(timestamp, 'unixepoch')) AS INTEGER), SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens), COUNT(*) FROM token_records {} GROUP BY 1 ORDER BY 1",
+        where_clause
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+        Ok(HourlyPoint {
+            hour: row.get(0)?,
+            tokens: row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+            requests: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn get_model_trend(conn: &Connection, filters: &FilterParams) -> Result<Vec<ModelTrendPoint>> {
+    let (where_clause, params) = build_where_clause(filters);
+    let sql = format!(
+        "SELECT strftime('%Y-%m-%d', datetime(timestamp, 'unixepoch')), COALESCE(model, 'unknown'), SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens) FROM token_records {} GROUP BY 1, 2 ORDER BY 1, 2",
+        where_clause
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+        Ok(ModelTrendPoint {
+            date: row.get(0)?,
+            model: row.get(1)?,
+            tokens: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn get_cumulative_cost(conn: &Connection, filters: &FilterParams) -> Result<Vec<CumulativePoint>> {
+    let (where_clause, params) = build_where_clause(filters);
+    let sql = format!(
+        "SELECT strftime('%Y-%m-%d', datetime(timestamp, 'unixepoch')), SUM(cost_estimate) FROM token_records {} GROUP BY 1 ORDER BY 1",
+        where_clause
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+        Ok(CumulativePoint {
+            date: row.get(0)?,
+            cost: row.get::<_, Option<f64>>(1)?.unwrap_or(0.0),
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn get_scatter_data(conn: &Connection, filters: &FilterParams, limit: i64) -> Result<Vec<ScatterPoint>> {
+    let (where_clause, params) = build_where_clause(filters);
+    let sql = format!(
+        "SELECT input_tokens, output_tokens, COALESCE(model, 'unknown'), cost_estimate FROM token_records {} ORDER BY timestamp DESC LIMIT ?",
+        where_clause
+    );
+    let mut all_params = params.clone();
+    all_params.push(limit.into());
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(all_params.iter()), |row| {
+        Ok(ScatterPoint {
+            input: row.get(0)?,
+            output: row.get(1)?,
+            model: row.get(2)?,
+            cost: row.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn get_sankey_data(conn: &Connection, filters: &FilterParams) -> Result<Vec<(String, String, i64)>> {
+    let (where_clause, params) = build_where_clause(filters);
+    let sql = format!(
+        "SELECT source, COALESCE(model, 'unknown'), SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens) FROM token_records {} GROUP BY source, model ORDER BY 3 DESC",
+        where_clause
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?))
+    })?;
+    rows.collect()
 }
 
 pub fn get_all_records_for_export(conn: &Connection, filters: &FilterParams) -> Result<Vec<TokenRecord>> {

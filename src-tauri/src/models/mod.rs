@@ -104,3 +104,31 @@ pub struct SyncProgress {
     pub total: usize,
     pub message: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HourlyPoint {
+    pub hour: i64,
+    pub tokens: i64,
+    pub requests: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelTrendPoint {
+    pub date: String,
+    pub model: String,
+    pub tokens: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CumulativePoint {
+    pub date: String,
+    pub cost: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScatterPoint {
+    pub input: i64,
+    pub output: i64,
+    pub model: String,
+    pub cost: f64,
+}

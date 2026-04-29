@@ -46,3 +46,18 @@ export const setModelPricing = (pricing: ModelPricing): Promise<void> =>
 
 export const exportData = (filters: FilterParams, format: string): Promise<string> =>
   invoke("export_data", { filters, format });
+
+export const getHourlyDistribution = (filters: FilterParams): Promise<{ hour: number; tokens: number; requests: number }[]> =>
+  invoke("get_hourly_distribution", { filters });
+
+export const getModelTrend = (filters: FilterParams): Promise<{ date: string; model: string; tokens: number }[]> =>
+  invoke("get_model_trend", { filters });
+
+export const getCumulativeCost = (filters: FilterParams): Promise<{ date: string; cost: number }[]> =>
+  invoke("get_cumulative_cost", { filters });
+
+export const getScatterData = (filters: FilterParams, limit: number): Promise<{ input: number; output: number; model: string; cost: number }[]> =>
+  invoke("get_scatter_data", { filters, limit });
+
+export const getSankeyData = (filters: FilterParams): Promise<[string, string, number][]> =>
+  invoke("get_sankey_data", { filters });

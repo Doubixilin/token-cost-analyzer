@@ -60,8 +60,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
         {
           name: "Input",
           type: "line",
-          stack: "tokens",
-          areaStyle: { opacity: 0.1 },
+          areaStyle: { opacity: 0.15 },
           smooth: true,
           data: data.map((d) => d.input_tokens),
           itemStyle: { color: "#3b82f6" },
@@ -69,8 +68,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
         {
           name: "Output",
           type: "line",
-          stack: "tokens",
-          areaStyle: { opacity: 0.1 },
+          areaStyle: { opacity: 0.15 },
           smooth: true,
           data: data.map((d) => d.output_tokens),
           itemStyle: { color: "#10b981" },
@@ -78,8 +76,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
         {
           name: "Cache Read",
           type: "line",
-          stack: "tokens",
-          areaStyle: { opacity: 0.1 },
+          areaStyle: { opacity: 0.15 },
           smooth: true,
           data: data.map((d) => d.cache_read_tokens),
           itemStyle: { color: "#f59e0b" },
@@ -87,8 +84,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
         {
           name: "Cache Creation",
           type: "line",
-          stack: "tokens",
-          areaStyle: { opacity: 0.1 },
+          areaStyle: { opacity: 0.15 },
           smooth: true,
           data: data.map((d) => d.cache_creation_tokens),
           itemStyle: { color: "#8b5cf6" },

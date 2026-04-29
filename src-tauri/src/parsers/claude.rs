@@ -157,6 +157,10 @@ pub fn parse_all_claude_records(
                 Some(m) => m,
                 None => continue,
             };
+            // Skip synthetic error messages (API errors, rate limits, etc.)
+            if inner.model.as_deref() == Some("<synthetic>") {
+                continue;
+            }
             let usage = match inner.usage {
                 Some(u) => u,
                 None => continue,

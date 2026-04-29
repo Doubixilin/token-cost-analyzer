@@ -119,6 +119,36 @@ fn export_data(state: tauri::State<AppState>, filters: FilterParams, format: Str
     }
 }
 
+#[tauri::command]
+fn get_hourly_distribution(state: tauri::State<AppState>, filters: FilterParams) -> Result<Vec<HourlyPoint>, String> {
+    let conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
+    queries::get_hourly_distribution(&conn, &filters).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_model_trend(state: tauri::State<AppState>, filters: FilterParams) -> Result<Vec<ModelTrendPoint>, String> {
+    let conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
+    queries::get_model_trend(&conn, &filters).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_cumulative_cost(state: tauri::State<AppState>, filters: FilterParams) -> Result<Vec<CumulativePoint>, String> {
+    let conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
+    queries::get_cumulative_cost(&conn, &filters).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_scatter_data(state: tauri::State<AppState>, filters: FilterParams, limit: i64) -> Result<Vec<ScatterPoint>, String> {
+    let conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
+    queries::get_scatter_data(&conn, &filters, limit).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_sankey_data(state: tauri::State<AppState>, filters: FilterParams) -> Result<Vec<(String, String, i64)>, String> {
+    let conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
+    queries::get_sankey_data(&conn, &filters).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -141,6 +171,11 @@ pub fn run() {
             get_model_pricing,
             set_model_pricing,
             export_data,
+            get_hourly_distribution,
+            get_model_trend,
+            get_cumulative_cost,
+            get_scatter_data,
+            get_sankey_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

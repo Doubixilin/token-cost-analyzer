@@ -21,6 +21,9 @@ pub fn sync_all_data(conn: &mut Connection) -> Result<usize, Box<dyn std::error:
     
     let tx = conn.transaction()?;
     
+    // Clean up synthetic error messages from previous versions
+    tx.execute("DELETE FROM token_records WHERE model = '<synthetic>'", [])?;
+    
     // Insert Kimi records
     total_inserted += insert_records(&tx, &kimi_records)?;
     
@@ -28,6 +31,9 @@ pub fn sync_all_data(conn: &mut Connection) -> Result<usize, Box<dyn std::error:
     total_inserted += insert_records(&tx, &claude_records)?;
     
     tx.commit()?;
+    
+    // Ensure all models in token_records have a pricing entry (default to 0)
+    ensure_all_models_priced(conn)?;
     
     Ok(total_inserted)
 }
@@ -93,6 +99,22 @@ fn recalc_session_summaries(conn: &Connection) -> Result<(), rusqlite::Error> {
         [],
     )?;
     
+    Ok(())
+}
+
+fn ensure_all_models_priced(conn: &mut Connection) -> Result<(), rusqlite::Error> {
+    let models: Vec<String> = conn.prepare(
+        "SELECT DISTINCT COALESCE(model, 'unknown') FROM token_records WHERE model NOT IN (SELECT model FROM model_pricing)"
+    )?
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+    
+    for model in models {
+        conn.execute(
+            "INSERT INTO model_pricing (model, input_price, output_price, cache_read_price, cache_creation_price, currency) VALUES (?1, 0, 0, 0, 0, 'USD')",
+            [&model],
+        )?;
+    }
     Ok(())
 }
 

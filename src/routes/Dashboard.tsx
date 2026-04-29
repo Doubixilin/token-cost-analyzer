@@ -14,6 +14,7 @@ import { getOverviewStats, getTrendData, getFilterOptions, refreshData, exportDa
 import StatCard from "../components/StatCard";
 import TrendChart from "../components/TrendChart";
 import FilterBar from "../components/FilterBar";
+
 import { formatNumber } from "../utils/formatter";
 
 export default function Dashboard() {
@@ -107,6 +108,7 @@ export default function Dashboard() {
             <Download size={14} />
             JSON
           </button>
+
         </div>
       </div>
 

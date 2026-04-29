@@ -11,6 +11,8 @@ export default function Settings() {
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const { theme, setTheme } = useStatsStore();
+  const [newModel, setNewModel] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const loadPricing = useCallback(async () => {
     try {
@@ -44,6 +46,33 @@ export default function Settings() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddModel = async () => {
+    const model = newModel.trim();
+    if (!model) return;
+    if (pricing.some((p) => p.model === model)) {
+      alert("该模型已存在");
+      return;
+    }
+    const newPricing: ModelPricing = {
+      model,
+      input_price: 0,
+      output_price: 0,
+      cache_read_price: 0,
+      cache_creation_price: 0,
+      currency: "USD",
+    };
+    try {
+      await setModelPricing(newPricing);
+      setPricing((prev) => [...prev, newPricing].sort((a, b) => a.model.localeCompare(b.model)));
+      setNewModel("");
+      setShowAddForm(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -114,7 +143,7 @@ export default function Settings() {
           </table>
         </div>
 
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex items-center gap-3 flex-wrap">
           <button
             onClick={handleSave}
             disabled={loading}
@@ -122,8 +151,40 @@ export default function Settings() {
           >
             {loading ? "保存中..." : "保存配置"}
           </button>
+          <button
+            onClick={() => setShowAddForm((s) => !s)}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] transition-colors"
+          >
+            {showAddForm ? "取消" : "+ 添加模型"}
+          </button>
           {saved && <span className="text-sm text-[var(--color-success)]">保存成功！成本已重新计算</span>}
         </div>
+
+        {showAddForm && (
+          <div className="mt-4 p-4 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)]">
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="block text-xs text-[var(--color-text-secondary)] mb-1">模型名称</label>
+                <input
+                  type="text"
+                  value={newModel}
+                  onChange={(e) => setNewModel(e.target.value)}
+                  placeholder="例如: tokenplan"
+                  className="px-3 py-1.5 rounded border border-[var(--color-border)] text-sm w-48"
+                />
+              </div>
+              <button
+                onClick={handleAddModel}
+                className="px-4 py-1.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-dark)]"
+              >
+                添加
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-[var(--color-text-secondary)]">
+              添加后请设置该模型的单价，然后点击"保存配置"
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">

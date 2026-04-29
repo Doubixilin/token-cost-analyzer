@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import ReactECharts from "echarts-for-react";
+import echarts from "../utils/echarts-setup";
 import { FileSpreadsheet } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
 import { getDistribution, getHeatmapData, getTopN } from "../api/tauriCommands";
@@ -10,9 +11,9 @@ import AdvancedAnalytics from "../components/AdvancedAnalytics";
 
 export default function Analytics() {
   const filters = useStatsStore((s) => s.filters);
+  const refreshVersion = useStatsStore((s) => s.refreshVersion);
   const overview = useStatsStore((s) => s.overview);
   const trendData = useStatsStore((s) => s.trendData);
-  const mountedRef = useRef(true);
   const [modelDist, setModelDist] = useState<DistributionItem[]>([]);
   const [sourceDist, setSourceDist] = useState<DistributionItem[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
@@ -21,28 +22,24 @@ export default function Analytics() {
 
   const currentYear = useMemo(() => new Date().getFullYear(), []);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [models, sources, heatmap, top] = await Promise.all([
-        getDistribution(filters, "model"),
-        getDistribution(filters, "source"),
-        getHeatmapData(filters, currentYear),
-        getTopN(filters, "session", "tokens", 10),
-      ]);
-      if (!mountedRef.current) return;
-      setModelDist(models);
-      setSourceDist(sources);
-      setHeatmapData(heatmap);
-      setTopSessions(top);
-    } catch (e) {
-      console.error(e);
-    }
-  }, [filters, currentYear]);
-
   useEffect(() => {
-    loadData();
-    return () => { mountedRef.current = false; };
-  }, [loadData]);
+    let cancelled = false;
+    Promise.all([
+      getDistribution(filters, "model"),
+      getDistribution(filters, "source"),
+      getHeatmapData(filters, currentYear),
+      getTopN(filters, "session", "tokens", 10),
+    ])
+      .then(([models, sources, heatmap, top]) => {
+        if (cancelled) return;
+        setModelDist(models);
+        setSourceDist(sources);
+        setHeatmapData(heatmap);
+        setTopSessions(top);
+      })
+      .catch((e) => console.error(e));
+    return () => { cancelled = true; };
+  }, [filters, currentYear, refreshVersion]);
 
   const modelPieOption = useMemo(() => ({
     title: { text: "模型分布", left: "center", textStyle: { fontSize: 14 } },
@@ -143,8 +140,8 @@ export default function Analytics() {
         range: currentYear.toString(),
         itemStyle: { borderWidth: 0.5 },
         yearLabel: { show: true },
-        dayLabel: { firstDay: 1, nameMap: "cn" },
-        monthLabel: { nameMap: "cn" },
+        dayLabel: { firstDay: 1, nameMap: ["日", "一", "二", "三", "四", "五", "六"] },
+        monthLabel: { nameMap: ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"] },
       },
       series: [
         {
@@ -189,20 +186,20 @@ export default function Analytics() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label="模型分布饼图">
-          <ReactECharts option={modelPieOption} style={{ height: 300 }} lazyUpdate={true} />
+          <ReactECharts option={modelPieOption} style={{ height: 300 }} lazyUpdate={true} echarts={echarts} />
         </div>
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label="工具分布饼图">
-          <ReactECharts option={sourcePieOption} style={{ height: 300 }} lazyUpdate={true} />
+          <ReactECharts option={sourcePieOption} style={{ height: 300 }} lazyUpdate={true} echarts={echarts} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label="Top 10 会话柱状图">
-          <ReactECharts option={barOption} style={{ height: 350 }} lazyUpdate={true} />
+          <ReactECharts option={barOption} style={{ height: 350 }} lazyUpdate={true} echarts={echarts} />
         </div>
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label="Token 消耗热力图">
           {heatmapData.length > 0 ? (
-            <ReactECharts option={heatmapOption} style={{ height: 350 }} lazyUpdate={true} />
+            <ReactECharts option={heatmapOption} style={{ height: 350 }} lazyUpdate={true} echarts={echarts} />
           ) : (
             <div className="h-[350px] flex items-center justify-center text-[var(--color-text-secondary)]">
               暂无热力图数据

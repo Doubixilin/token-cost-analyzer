@@ -19,6 +19,7 @@ import { formatNumber } from "../utils/formatter";
 
 export default function Dashboard() {
   const filters = useStatsStore((s) => s.filters);
+  const refreshVersion = useStatsStore((s) => s.refreshVersion);
   const overview = useStatsStore((s) => s.overview);
   const trendData = useStatsStore((s) => s.trendData);
   const isLoading = useStatsStore((s) => s.isLoading);
@@ -27,7 +28,7 @@ export default function Dashboard() {
   const setLoading = useStatsStore((s) => s.setLoading);
   const setAvailableOptions = useStatsStore((s) => s.setAvailableOptions);
   const [exporting, setExporting] = useState(false);
-  const mountedRef = useRef(true);
+  const autoSyncedRef = useRef(false);
 
   const fetchDashboardData = useCallback(async () => {
     const [stats, trend, options] = await Promise.all([
@@ -38,31 +39,24 @@ export default function Dashboard() {
     setOverview(stats);
     setTrendData(trend);
     setAvailableOptions(options[0], options[1], options[2]);
-    return options[0].length === 0;
   }, [filters, setOverview, setTrendData, setAvailableOptions]);
 
-  const loadData = useCallback(async (autoSync = false) => {
-    if (!mountedRef.current) return;
-    setLoading(true);
-    try {
-      const isEmpty = await fetchDashboardData();
-      if (!mountedRef.current) return;
-      if (autoSync && isEmpty) {
-        await refreshData();
-        if (!mountedRef.current) return;
-        await fetchDashboardData();
-      }
-    } catch (e) {
-      console.error("Failed to load data:", e);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [fetchDashboardData, setLoading]);
-
+  // Auto-sync on first mount (only once)
   useEffect(() => {
-    loadData(true);
-    return () => { mountedRef.current = false; };
-  }, [loadData]);
+    if (autoSyncedRef.current) return;
+    autoSyncedRef.current = true;
+    refreshData().catch((e) => console.error("Auto-sync failed:", e));
+  }, []);
+
+  // Re-fetch when filters change or sidebar triggers refresh
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchDashboardData()
+      .catch((e) => console.error("Failed to load dashboard data:", e))
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [fetchDashboardData, refreshVersion, setLoading]);
 
   const inputTokens = overview?.total_input || 0;
   const outputTokens = overview?.total_output || 0;
@@ -150,13 +144,13 @@ export default function Dashboard() {
       {/* Secondary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
-          title="Input Tokens"
+          title="输入 Tokens"
           value={formatNumber(inputTokens)}
           icon={ArrowDownLeft}
           color="#3b82f6"
         />
         <StatCard
-          title="Output Tokens"
+          title="输出 Tokens"
           value={formatNumber(outputTokens)}
           icon={ArrowUpRight}
           color="#10b981"

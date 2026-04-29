@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import ReactECharts from "echarts-for-react";
+import echarts from "../utils/echarts-setup";
 import { useStatsStore } from "../stores/useStatsStore";
 import {
   getHourlyDistribution,
@@ -14,7 +15,7 @@ import { formatTokens } from "../utils/formatter";
 
 export default function AdvancedAnalytics() {
   const filters = useStatsStore((s) => s.filters);
-  const mountedRef = useRef(true);
+  const refreshVersion = useStatsStore((s) => s.refreshVersion);
   const [hourly, setHourly] = useState<{ hour: number; tokens: number; requests: number }[]>([]);
   const [modelTrend, setModelTrend] = useState<{ date: string; model: string; tokens: number }[]>([]);
   const [cumulative, setCumulative] = useState<{ date: string; cost: number }[]>([]);
@@ -23,34 +24,30 @@ export default function AdvancedAnalytics() {
   const [agentDist, setAgentDist] = useState<{ name: string; value: number; cost: number }[]>([]);
   const [projectTop, setProjectTop] = useState<{ id: string; name: string; value: number; cost: number }[]>([]);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [h, mt, cc, sc, sk, ad, pt] = await Promise.all([
-        getHourlyDistribution(filters),
-        getModelTrend(filters),
-        getCumulativeCost(filters),
-        getScatterData(filters, 300),
-        getSankeyData(filters),
-        getDistribution(filters, "agent_type"),
-        getTopN(filters, "project", "tokens", 10),
-      ]);
-      if (!mountedRef.current) return;
-      setHourly(h);
-      setModelTrend(mt);
-      setCumulative(cc);
-      setScatter(sc);
-      setSankey(sk);
-      setAgentDist(ad);
-      setProjectTop(pt);
-    } catch (e) {
-      console.error(e);
-    }
-  }, [filters]);
-
   useEffect(() => {
-    loadData();
-    return () => { mountedRef.current = false; };
-  }, [loadData]);
+    let cancelled = false;
+    Promise.all([
+      getHourlyDistribution(filters),
+      getModelTrend(filters),
+      getCumulativeCost(filters),
+      getScatterData(filters, 300),
+      getSankeyData(filters),
+      getDistribution(filters, "agent_type"),
+      getTopN(filters, "project", "tokens", 10),
+    ])
+      .then(([h, mt, cc, sc, sk, ad, pt]) => {
+        if (cancelled) return;
+        setHourly(h);
+        setModelTrend(mt);
+        setCumulative(cc);
+        setScatter(sc);
+        setSankey(sk);
+        setAgentDist(ad);
+        setProjectTop(pt);
+      })
+      .catch((e) => console.error(e));
+    return () => { cancelled = true; };
+  }, [filters, refreshVersion]);
 
   // A. Input/Output Scatter
   const scatterOption = useMemo(() => {
@@ -244,7 +241,7 @@ export default function AdvancedAnalytics() {
 
   const ChartCard = ({ option, height = 300, ariaLabel }: { option: any; height?: number; ariaLabel: string }) => (
     <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label={ariaLabel}>
-      <ReactECharts option={option} style={{ height }} lazyUpdate={true} />
+      <ReactECharts option={option} style={{ height }} lazyUpdate={true} echarts={echarts} />
     </div>
   );
 

@@ -33,6 +33,7 @@ interface StatsState {
   availableModels: string[];
   availableProjects: string[];
   theme: Theme;
+  refreshVersion: number;
   setFilters: (filters: Partial<FilterParams>) => void;
   setOverview: (overview: OverviewStats) => void;
   setTrendData: (data: TrendPoint[]) => void;
@@ -42,6 +43,7 @@ interface StatsState {
   setAvailableOptions: (sources: string[], models: string[], projects: string[]) => void;
   resetFilters: () => void;
   setTheme: (theme: Theme) => void;
+  notifyRefresh: () => void;
 }
 
 const defaultFilters: FilterParams = {
@@ -67,6 +69,7 @@ export const useStatsStore = create<StatsState>((set) => ({
   availableModels: [],
   availableProjects: [],
   theme: initialTheme,
+  refreshVersion: 0,
   setFilters: (filters) => set((state) => ({ filters: { ...state.filters, ...filters } })),
   setOverview: (overview) => set({ overview }),
   setTrendData: (trendData) => set({ trendData }),
@@ -80,4 +83,5 @@ export const useStatsStore = create<StatsState>((set) => ({
     applyTheme(theme);
     set({ theme });
   },
+  notifyRefresh: () => set((state) => ({ refreshVersion: state.refreshVersion + 1 })),
 }));

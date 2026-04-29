@@ -8,7 +8,7 @@ use tauri::Manager;
 
 use crate::db::queries;
 use crate::models::*;
-use crate::sync::{parse_all_records, insert_parsed_records, recalc_costs};
+use crate::sync::{scan_session_files, get_file_sync_state, parse_changed_files, insert_and_update_sync, recalc_costs};
 
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
@@ -64,11 +64,31 @@ fn get_filter_options(state: tauri::State<AppState>) -> Result<(Vec<String>, Vec
 
 #[tauri::command]
 fn refresh_data(state: tauri::State<AppState>) -> Result<usize, String> {
-    // Parse files outside the lock (expensive I/O)
-    let parsed = parse_all_records().map_err(|e| e.to_string())?;
-    // Acquire lock only for DB insert (fast)
+    // Step 1: Scan files and read sync state (outside lock for I/O)
+    let files = scan_session_files();
+    let prev_state = {
+        let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
+        get_file_sync_state(&conn).unwrap_or_else(|_| std::collections::HashMap::new())
+    };
+
+    // Step 2: Parse only changed files (outside lock)
+    let mut progress = |phase: &str, current: usize, total: usize| {
+        println!("[{}] Progress: {}/{}", phase, current, total);
+    };
+    let (records, changed_paths) = parse_changed_files(&files, &prev_state, &mut progress);
+
+    // Step 3: Insert and update sync state (inside lock)
     let mut conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
-    let count = insert_parsed_records(&mut conn, &parsed).map_err(|e| e.to_string())?;
+    let current_paths: Vec<String> = files.iter()
+        .filter_map(|(p, _, _)| p.to_str().map(|s| s.to_string()))
+        .collect();
+    let file_mtimes: Vec<(String, f64)> = files.iter()
+        .filter(|(p, _, _)| changed_paths.contains(&p.to_str().unwrap_or("").to_string()))
+        .map(|(p, m, _)| (p.to_str().unwrap_or("").to_string(), *m))
+        .collect();
+
+    let count = insert_and_update_sync(&mut conn, &records, &changed_paths, &file_mtimes, &current_paths)
+        .map_err(|e| e.to_string())?;
     recalc_costs(&mut conn).map_err(|e| e.to_string())?;
     Ok(count)
 }

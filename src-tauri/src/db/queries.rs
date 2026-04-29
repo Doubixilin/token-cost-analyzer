@@ -212,7 +212,7 @@ pub fn get_top_n(conn: &Connection, filters: &FilterParams, dimension: &str, met
 }
 
 pub fn get_heatmap_data(conn: &Connection, filters: &FilterParams, year: i32) -> Result<Vec<HeatmapPoint>> {
-    let (mut where_clause, mut params) = build_where_clause(filters);
+    let (mut where_clause, params) = build_where_clause(filters);
     let year_start = chrono::NaiveDate::from_ymd_opt(year, 1, 1)
         .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("invalid year: {}", year)))?;
     let year_end = chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)

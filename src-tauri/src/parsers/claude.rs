@@ -7,35 +7,35 @@ use walkdir::WalkDir;
 use crate::models::TokenRecord;
 
 #[derive(Debug, Deserialize)]
-struct ClaudeMessage {
+pub struct ClaudeMessage {
     #[serde(rename = "type")]
-    msg_type: String,
-    message: Option<ClaudeInnerMessage>,
-    timestamp: Option<String>,
+    pub msg_type: String,
+    pub message: Option<ClaudeInnerMessage>,
+    pub timestamp: Option<String>,
     #[serde(rename = "sessionId")]
-    session_id: Option<String>,
+    pub session_id: Option<String>,
     #[serde(rename = "agentId")]
-    agent_id: Option<String>,
+    pub agent_id: Option<String>,
     #[serde(rename = "isSidechain")]
-    is_sidechain: Option<bool>,
+    pub is_sidechain: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ClaudeInnerMessage {
-    model: Option<String>,
-    usage: Option<ClaudeUsage>,
+pub struct ClaudeInnerMessage {
+    pub model: Option<String>,
+    pub usage: Option<ClaudeUsage>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ClaudeUsage {
+pub struct ClaudeUsage {
     #[serde(rename = "input_tokens")]
-    input_tokens: i64,
+    pub input_tokens: i64,
     #[serde(rename = "output_tokens")]
-    output_tokens: i64,
+    pub output_tokens: i64,
     #[serde(rename = "cache_creation_input_tokens")]
-    cache_creation_input_tokens: Option<i64>,
+    pub cache_creation_input_tokens: Option<i64>,
     #[serde(rename = "cache_read_input_tokens")]
-    cache_read_input_tokens: Option<i64>,
+    pub cache_read_input_tokens: Option<i64>,
 }
 
 pub fn find_claude_projects() -> Option<PathBuf> {
@@ -64,9 +64,12 @@ pub fn parse_all_claude_records(
     };
 
     // Collect all JSONL files in projects dir
+    // On Windows, canonicalize() returns \\?\ prefixed paths, so we must
+    // canonicalize the base dir too for starts_with() to work correctly.
+    let canonical_projects_dir = projects_dir.canonicalize().unwrap_or_else(|_| projects_dir.clone());
     let mut files: Vec<(PathBuf, bool)> = vec![]; // (path, is_subagent)
-    
-    for entry in WalkDir::new(&projects_dir).max_depth(4).into_iter().filter_map(|e| e.ok()) {
+
+    for entry in WalkDir::new(&projects_dir).max_depth(5).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -77,7 +80,7 @@ pub fn parse_all_claude_records(
         }
         // Security: verify the file is still within projects_dir
         if let Ok(canonical) = path.canonicalize() {
-            if !canonical.starts_with(&projects_dir) {
+            if !canonical.starts_with(&canonical_projects_dir) {
                 continue;
             }
         }

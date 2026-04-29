@@ -53,12 +53,31 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         );
 
         CREATE TABLE IF NOT EXISTS sync_state (
-            source TEXT PRIMARY KEY,
-            last_scan_time REAL,
-            last_record_count INTEGER
+            file_path TEXT PRIMARY KEY,
+            last_modified REAL NOT NULL,
+            record_count INTEGER DEFAULT 0
         );
         "#,
     )?;
+
+    // Migrate: sync_state table schema changed from (source, last_scan_time, last_record_count)
+    // to (file_path, last_modified, record_count). Drop and recreate if old schema detected.
+    let has_old_schema: bool = conn.query_row(
+        "SELECT 1 FROM pragma_table_info('sync_state') WHERE name = 'source'",
+        [],
+        |_| Ok(true),
+    ).unwrap_or(false);
+
+    if has_old_schema {
+        conn.execute("DROP TABLE sync_state", [])?;
+        conn.execute_batch(
+            "CREATE TABLE sync_state (
+                file_path TEXT PRIMARY KEY,
+                last_modified REAL NOT NULL,
+                record_count INTEGER DEFAULT 0
+            );",
+        )?;
+    }
 
     // Migrate: create unique index for deduplication
     // If index doesn't exist yet, deduplicate existing records first
@@ -84,6 +103,21 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // Migrate: fix Kimi records that had model='unknown' due to config.toml field name bug.
+    // Delete them and clear their sync_state so incremental sync re-parses with correct model.
+    let has_unknown_kimi: bool = conn.query_row(
+        "SELECT 1 FROM token_records WHERE source = 'kimi' AND (model = 'unknown' OR model IS NULL) LIMIT 1",
+        [],
+        |_| Ok(true),
+    ).unwrap_or(false);
+
+    if has_unknown_kimi {
+        eprintln!("[migration] Found Kimi records with model='unknown', clearing for re-sync...");
+        conn.execute("DELETE FROM token_records WHERE source = 'kimi' AND (model = 'unknown' OR model IS NULL)", [])?;
+        // Clear all sync_state so ALL files get re-parsed (safe: incremental sync rebuilds it)
+        conn.execute("DELETE FROM sync_state", [])?;
+    }
+
     Ok(())
 }
 
@@ -100,6 +134,7 @@ pub fn init_default_pricing(conn: &Connection) -> Result<()> {
         ("o3-mini", 1.1, 4.4, 0.55, 1.1),
         ("kimi-k1.5", 2.0, 8.0, 0.2, 2.0),
         ("kimi-k2", 2.0, 8.0, 0.2, 2.0),
+        ("kimi-for-coding", 2.0, 8.0, 0.2, 2.0),
         ("unknown", 2.0, 8.0, 0.2, 2.0),
     ];
 

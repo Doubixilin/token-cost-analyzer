@@ -7,34 +7,34 @@ use walkdir::WalkDir;
 use crate::models::TokenRecord;
 
 #[derive(Debug, Deserialize)]
-struct WireMessage {
-    timestamp: f64,
-    message: MessageWrapper,
+pub struct WireMessage {
+    pub timestamp: f64,
+    pub message: MessageWrapper,
 }
 
 #[derive(Debug, Deserialize)]
-struct MessageWrapper {
+pub struct MessageWrapper {
     #[serde(rename = "type")]
-    msg_type: String,
-    payload: Option<StatusPayload>,
+    pub msg_type: String,
+    pub payload: Option<StatusPayload>,
 }
 
 #[derive(Debug, Deserialize)]
-struct StatusPayload {
-    token_usage: Option<TokenUsage>,
+pub struct StatusPayload {
+    pub token_usage: Option<TokenUsage>,
     #[serde(rename = "message_id")]
-    message_id: Option<String>,
+    pub message_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct TokenUsage {
+pub struct TokenUsage {
     #[serde(rename = "input_other")]
-    input_other: i64,
-    output: i64,
+    pub input_other: i64,
+    pub output: i64,
     #[serde(rename = "input_cache_read")]
-    input_cache_read: i64,
+    pub input_cache_read: i64,
     #[serde(rename = "input_cache_creation")]
-    input_cache_creation: i64,
+    pub input_cache_creation: i64,
 }
 
 pub fn find_kimi_sessions() -> Option<PathBuf> {
@@ -59,6 +59,15 @@ fn load_kimi_default_model() -> Option<String> {
     }
     let content = std::fs::read_to_string(&config_path).ok()?;
     let config: toml::Value = toml::from_str(&content).ok()?;
+
+    // Try top-level "default_model" first (e.g. "kimi-code/kimi-for-coding")
+    if let Some(dm) = config.get("default_model").and_then(|v| v.as_str()) {
+        // Extract the model name after the slash: "kimi-code/kimi-for-coding" -> "kimi-for-coding"
+        let model_name = dm.rsplit('/').next().unwrap_or(dm);
+        return Some(model_name.to_string());
+    }
+
+    // Fallback: try top-level "model" key
     config.get("model")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
@@ -73,12 +82,15 @@ pub fn parse_all_kimi_records(
     };
 
     // Collect all wire.jsonl files
+    // On Windows, canonicalize() returns \\?\ prefixed paths, so we must
+    // canonicalize the base dir too for starts_with() to work correctly.
+    let canonical_sessions_dir = sessions_dir.canonicalize().unwrap_or_else(|_| sessions_dir.clone());
     let mut files: Vec<PathBuf> = vec![];
     for entry in WalkDir::new(&sessions_dir).max_depth(5).into_iter().filter_map(|e| e.ok()) {
         if entry.file_name() == "wire.jsonl" {
             // Security: verify the file is still within sessions_dir after canonicalization
             if let Ok(canonical) = entry.path().canonicalize() {
-                if canonical.starts_with(&sessions_dir) {
+                if canonical.starts_with(&canonical_sessions_dir) {
                     files.push(entry.path().to_path_buf());
                 }
             }

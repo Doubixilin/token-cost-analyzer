@@ -9,6 +9,7 @@ import type {
   HeatmapPoint,
   ModelPricing,
   FilterParams,
+  WidgetConfig,
 } from "../types";
 
 export const getOverviewStats = (filters: FilterParams): Promise<OverviewStats> =>
@@ -61,3 +62,22 @@ export const getScatterData = (filters: FilterParams, limit: number): Promise<{ 
 
 export const getSankeyData = (filters: FilterParams): Promise<[string, string, number][]> =>
   invoke("get_sankey_data", { filters });
+
+// --- 小组件命令 ---
+export const toggleWidget = (): Promise<void> =>
+  invoke("toggle_widget");
+
+export const setWidgetIgnoreCursor = (label: string, ignore: boolean): Promise<void> =>
+  invoke("set_widget_ignore_cursor", { label, ignore });
+
+export const saveWidgetConfig = (config: WidgetConfig): Promise<void> =>
+  invoke("save_widget_config", { config });
+
+export const loadWidgetConfig = (): Promise<WidgetConfig> =>
+  invoke("load_widget_config");
+
+export const embedWidgetToDesktop = (): Promise<void> =>
+  invoke("embed_widget_to_desktop");
+
+export const unpinWidgetFromDesktop = (): Promise<void> =>
+  invoke("unpin_widget_from_desktop");

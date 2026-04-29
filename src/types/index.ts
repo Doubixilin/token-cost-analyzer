@@ -85,3 +85,17 @@ export interface FilterParams {
   projects: string[] | null;
   agent_types: string[] | null;
 }
+
+export interface WidgetConfig {
+  opacity: number;
+  locked: boolean;
+  pinned_to_desktop: boolean;
+  selected_modules: string[];
+  layout: "vertical" | "grid";
+  width: number;
+  height: number;
+  x: number | null;
+  y: number | null;
+  theme: "light" | "dark" | "auto";
+  refresh_interval_sec: number;
+}

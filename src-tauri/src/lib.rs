@@ -2,6 +2,8 @@ pub mod db;
 pub mod models;
 pub mod parsers;
 pub mod sync;
+pub mod tray;
+pub mod widget;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -177,9 +179,25 @@ fn get_sankey_data(state: tauri::State<AppState>, filters: FilterParams) -> Resu
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             let conn = db::init_db(&app.handle()).map_err(|e| e.to_string())?;
             app.manage(AppState { db: Mutex::new(conn) });
+
+            // 初始化系统托盘
+            tray::setup_tray(app.handle()).map_err(|e| e.to_string())?;
+
+            // 主窗口关闭时隐藏到托盘而非退出
+            if let Some(main_win) = app.get_webview_window("main") {
+                let win_clone = main_win.clone();
+                main_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win_clone.hide();
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -200,6 +218,12 @@ pub fn run() {
             get_cumulative_cost,
             get_scatter_data,
             get_sankey_data,
+            widget::toggle_widget,
+            widget::set_widget_ignore_cursor,
+            widget::save_widget_config,
+            widget::load_widget_config,
+            widget::embed_widget_to_desktop,
+            widget::unpin_widget_from_desktop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

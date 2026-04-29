@@ -6,9 +6,11 @@ import {
   Settings,
   RefreshCw,
   Activity,
+  Layers,
 } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
-import { refreshData, getFilterOptions } from "../api/tauriCommands";
+import { refreshData, getFilterOptions, toggleWidget } from "../api/tauriCommands";
+import { listen } from "@tauri-apps/api/event";
 import { useState, useEffect } from "react";
 
 const navItems = [
@@ -29,6 +31,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => setSyncMessage(""), timeoutMs);
     return () => clearTimeout(timer);
   }, [syncMessage]);
+
+  // 监听托盘的小组件切换事件
+  useEffect(() => {
+    const unlisten = listen("toggle_widget", () => {
+      toggleWidget().catch(console.error);
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
 
   const handleRefresh = async () => {
     setSyncing(true);
@@ -87,6 +97,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           >
             <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
             {isSyncing ? "同步中..." : "刷新数据"}
+          </button>
+          <button
+            onClick={() => toggleWidget().catch(console.error)}
+            className="flex items-center gap-2 w-full px-3 py-2 mt-1 rounded-lg text-sm font-medium text-[var(--color-text-secondary)] hover:bg-gray-50 dark:hover:bg-slate-700 hover:text-[var(--color-primary)] transition-colors"
+          >
+            <Layers size={16} />
+            桌面小组件
           </button>
           {syncMessage && (
             <p className="mt-2 text-xs text-[var(--color-text-secondary)] px-3">{syncMessage}</p>

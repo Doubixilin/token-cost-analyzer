@@ -1,7 +1,7 @@
 # Token Cost Analyzer - 开发进度文档
 
 > 最后更新: 2026-04-29
-> 当前阶段: v0.2.0 Bug 修复 + 增量同步 + 数据准确性修复
+> 当前阶段: v0.3.0 桌面悬浮小组件 + 系统托盘
 
 ---
 
@@ -68,6 +68,18 @@
 - [x] **index.html 标题** — 改为 "Token Cost Analyzer"
 - [x] **sync_state 表迁移** — 旧 schema 自动迁移到文件级追踪
 - [x] **Rust 编译零警告** — 公开 parser 结构体字段 + 修复 unused_mut
+
+### Phase 8: 桌面悬浮小组件 + 系统托盘 ✅ (2026-04-29)
+- [x] **多窗口架构** — 第二个透明无边框 WebviewWindow，Vite 多页面构建
+- [x] **系统托盘** — TrayIconBuilder + 菜单（显示主窗口/切换小组件/退出），主窗口关闭隐藏到托盘
+- [x] **毛玻璃效果** — Windows Acrylic 窗口特效 + CSS backdrop-filter 双层叠加
+- [x] **5 个可选数据模块** — 概览统计、消耗趋势、工具分布、模型分布、缓存效率
+- [x] **拖拽 + 锁定** — data-tauri-drag-region 原生拖拽，锁定后禁用
+- [x] **透明度调节** — CSS opacity 0.3-1.0 滑块控制
+- [x] **设置持久化** — JSON 配置文件 + window-state 插件自动保存窗口位置/尺寸
+- [x] **桌面钉入** — Win32 WorkerW 嵌入（windows-sys crate），窗口显示在壁纸和桌面图标之间
+- [x] **自动/手动刷新** — 可配置间隔（1/5/15/30 分钟），手动刷新按钮带旋转动画
+- [x] **ErrorBoundary** — 小组件专用错误边界，出错时显示重试按钮
 
 ---
 

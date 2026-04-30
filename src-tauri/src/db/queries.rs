@@ -160,6 +160,36 @@ pub fn get_session_list(conn: &Connection, filters: &FilterParams, limit: i64, o
             params.extend(sources.iter().map(|s| s.clone().into()));
         }
     }
+    if let Some(models) = &filters.models {
+        if !models.is_empty() {
+            let placeholders: Vec<String> = models.iter().map(|_| "?".to_string()).collect();
+            conditions.push(format!(
+                "session_id IN (SELECT DISTINCT session_id FROM token_records WHERE COALESCE(model, 'unknown') IN ({}))",
+                placeholders.join(", ")
+            ));
+            params.extend(models.iter().map(|s| s.clone().into()));
+        }
+    }
+    if let Some(projects) = &filters.projects {
+        if !projects.is_empty() {
+            let placeholders: Vec<String> = projects.iter().map(|_| "?".to_string()).collect();
+            conditions.push(format!(
+                "session_id IN (SELECT DISTINCT session_id FROM token_records WHERE COALESCE(project_path, 'unknown') IN ({}))",
+                placeholders.join(", ")
+            ));
+            params.extend(projects.iter().map(|s| s.clone().into()));
+        }
+    }
+    if let Some(agent_types) = &filters.agent_types {
+        if !agent_types.is_empty() {
+            let placeholders: Vec<String> = agent_types.iter().map(|_| "?".to_string()).collect();
+            conditions.push(format!(
+                "session_id IN (SELECT DISTINCT session_id FROM token_records WHERE agent_type IN ({}))",
+                placeholders.join(", ")
+            ));
+            params.extend(agent_types.iter().map(|s| s.clone().into()));
+        }
+    }
 
     let where_clause = if conditions.is_empty() {
         "".to_string()
@@ -225,10 +255,12 @@ pub fn get_heatmap_data(conn: &Connection, filters: &FilterParams, year: i32) ->
         .and_utc().timestamp() as f64;
     
     if where_clause.is_empty() {
-        where_clause = format!("WHERE timestamp >= {} AND timestamp < {}", start_ts, end_ts);
+        where_clause = "WHERE timestamp >= ? AND timestamp < ?".to_string();
     } else {
-        where_clause = format!("{} AND timestamp >= {} AND timestamp < {}", where_clause, start_ts, end_ts);
+        where_clause = format!("{} AND timestamp >= ? AND timestamp < ?", where_clause);
     }
+    params.push(start_ts.into());
+    params.push(end_ts.into());
 
     let sql = format!(
         "SELECT strftime('%Y-%m-%d', datetime(timestamp, 'unixepoch')), SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens) FROM token_records {} GROUP BY strftime('%Y-%m-%d', datetime(timestamp, 'unixepoch')) ORDER BY 1",

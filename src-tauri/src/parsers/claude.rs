@@ -66,7 +66,14 @@ pub fn parse_all_claude_records(
     // Collect all JSONL files in projects dir
     let mut files: Vec<(PathBuf, bool)> = vec![]; // (path, is_subagent)
     
-    for entry in WalkDir::new(&projects_dir).max_depth(4).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&projects_dir).max_depth(4).into_iter() {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("[claude] WalkDir error: {}", e);
+                continue;
+            }
+        };
         let path = entry.path();
         if !path.is_file() {
             continue;

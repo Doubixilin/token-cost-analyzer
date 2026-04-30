@@ -19,7 +19,9 @@ export class ErrorBoundary extends Component<
               应用出错了
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mb-4">
-              {this.state.error.message}
+              {this.state.error.message.length > 200
+                ? this.state.error.message.slice(0, 200) + "..."
+                : this.state.error.message}
             </p>
             <button
               type="button"

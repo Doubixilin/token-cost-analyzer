@@ -34,6 +34,9 @@ fn get_distribution(state: tauri::State<AppState>, filters: FilterParams, dimens
 
 #[tauri::command]
 fn get_session_list(state: tauri::State<AppState>, filters: FilterParams, limit: i64, offset: i64) -> Result<Vec<SessionSummary>, String> {
+    if limit <= 0 || offset < 0 {
+        return Err("limit must be > 0 and offset must be >= 0".to_string());
+    }
     let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
     queries::get_session_list(&conn, &filters, limit, offset).map_err(|e| e.to_string())
 }
@@ -81,7 +84,7 @@ fn get_model_pricing(state: tauri::State<AppState>) -> Result<Vec<ModelPricing>,
 
 #[tauri::command]
 fn set_model_pricing(state: tauri::State<AppState>, pricing: ModelPricing) -> Result<(), String> {
-    let mut conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
+    let mut conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
     queries::set_model_pricing(&conn, &pricing).map_err(|e| e.to_string())?;
     recalc_costs(&mut conn).map_err(|e| e.to_string())?;
     Ok(())
@@ -91,6 +94,9 @@ fn set_model_pricing(state: tauri::State<AppState>, pricing: ModelPricing) -> Re
 fn export_data(state: tauri::State<AppState>, filters: FilterParams, format: String) -> Result<String, String> {
     let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
     let records = queries::get_all_records_for_export(&conn, &filters).map_err(|e| e.to_string())?;
+    if records.len() > 100_000 {
+        return Err(format!("导出数据量过大 ({} 条记录)，请缩小筛选范围后重试", records.len()));
+    }
     
     match format.as_str() {
         "csv" => {

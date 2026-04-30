@@ -12,6 +12,14 @@ import {
 } from "../api/tauriCommands";
 import { formatTokens } from "../utils/formatter";
 
+function ChartCard({ option, height = 300, ariaLabel }: { option: any; height?: number; ariaLabel: string }) {
+  return (
+    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label={ariaLabel}>
+      <ReactECharts option={option} style={{ height }} lazyUpdate={true} />
+    </div>
+  );
+}
+
 export default function AdvancedAnalytics() {
   const filters = useStatsStore((s) => s.filters);
   const mountedRef = useRef(true);
@@ -48,6 +56,7 @@ export default function AdvancedAnalytics() {
   }, [filters]);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadData();
     return () => { mountedRef.current = false; };
   }, [loadData]);
@@ -241,12 +250,6 @@ export default function AdvancedAnalytics() {
       },
     ],
   }), [projectTop]);
-
-  const ChartCard = ({ option, height = 300, ariaLabel }: { option: any; height?: number; ariaLabel: string }) => (
-    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label={ariaLabel}>
-      <ReactECharts option={option} style={{ height }} lazyUpdate={true} />
-    </div>
-  );
 
   return (
     <div className="space-y-6">

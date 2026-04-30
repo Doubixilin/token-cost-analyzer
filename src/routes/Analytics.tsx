@@ -40,6 +40,7 @@ export default function Analytics() {
   }, [filters, currentYear]);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadData();
     return () => { mountedRef.current = false; };
   }, [loadData]);

@@ -3,7 +3,7 @@ import { useStatsStore } from "../stores/useStatsStore";
 import { getSessionList, getSessionDetail } from "../api/tauriCommands";
 import type { SessionSummary, TokenRecord } from "../types";
 import dayjs from "dayjs";
-import { formatTokens } from "../utils/formatter";
+import { formatTokens, formatCost } from "../utils/formatter";
 
 export default function Sessions() {
   const filters = useStatsStore((s) => s.filters);
@@ -25,6 +25,7 @@ export default function Sessions() {
   }, [filters, page]);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadSessions();
     return () => { mountedRef.current = false; };
   }, [loadSessions]);
@@ -81,7 +82,7 @@ export default function Sessions() {
                     {formatTokens(session.total_input + session.total_output + session.total_cache_read + session.total_cache_creation)}
                   </td>
                   <td className="px-4 py-3 text-right font-medium text-[var(--color-success)]">
-                    ${session.total_cost.toFixed(4)}
+                    {formatCost(session.total_cost)}
                   </td>
                   <td className="px-4 py-3 text-right text-[var(--color-text-secondary)]">
                     <button
@@ -147,7 +148,7 @@ export default function Sessions() {
                   <span className="text-blue-600">In: {formatTokens(record.input_tokens)}</span>
                   <span className="text-green-600">Out: {formatTokens(record.output_tokens)}</span>
                   <span className="text-orange-600">Cache: {formatTokens(record.cache_read_tokens + record.cache_creation_tokens)}</span>
-                  <span className="font-medium">${record.cost_estimate.toFixed(6)}</span>
+                  <span className="font-medium">{formatCost(record.cost_estimate)}</span>
                 </div>
               </div>
             ))}

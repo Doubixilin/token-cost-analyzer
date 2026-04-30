@@ -15,7 +15,7 @@ import StatCard from "../components/StatCard";
 import TrendChart from "../components/TrendChart";
 import FilterBar from "../components/FilterBar";
 
-import { formatNumber } from "../utils/formatter";
+import { formatNumber, formatCost } from "../utils/formatter";
 
 export default function Dashboard() {
   const filters = useStatsStore((s) => s.filters);
@@ -60,6 +60,7 @@ export default function Dashboard() {
   }, [fetchDashboardData, setLoading]);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadData(true);
     return () => { mountedRef.current = false; };
   }, [loadData]);
@@ -127,7 +128,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="总成本"
-          value={`$${(overview?.total_cost || 0).toFixed(4)}`}
+          value={formatCost(overview?.total_cost || 0)}
           icon={DollarSign}
           color="#10b981"
         />

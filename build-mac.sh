@@ -37,7 +37,20 @@ echo "✅ Cargo: $(cargo --version)"
 
 # 确认 Entitlements.plist 存在
 if [ ! -f "src-tauri/Entitlements.plist" ]; then
-    echo "⚠️  未找到 src-tauri/Entitlements.plist，macOS 可能会阻止应用运行"
+    echo "⚠️  未找到 src-tauri/Entitlements.plist，正在创建默认文件..."
+    cat > src-tauri/Entitlements.plist << 'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+    echo "✅ 已创建 src-tauri/Entitlements.plist"
 fi
 
 # 安装前端依赖

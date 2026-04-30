@@ -74,7 +74,14 @@ pub fn parse_all_kimi_records(
 
     // Collect all wire.jsonl files
     let mut files: Vec<PathBuf> = vec![];
-    for entry in WalkDir::new(&sessions_dir).max_depth(5).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&sessions_dir).max_depth(5).into_iter() {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("[kimi] WalkDir error: {}", e);
+                continue;
+            }
+        };
         if entry.file_name() == "wire.jsonl" {
             // Security: verify the file is still within sessions_dir after canonicalization
             if let Ok(canonical) = entry.path().canonicalize() {

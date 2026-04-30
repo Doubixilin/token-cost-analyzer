@@ -2,6 +2,7 @@ pub mod db;
 pub mod models;
 pub mod parsers;
 pub mod sync;
+pub mod tray;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -166,6 +167,24 @@ pub fn run() {
         .setup(|app| {
             let conn = db::init_db(&app.handle()).map_err(|e| e.to_string())?;
             app.manage(AppState { db: Mutex::new(conn) });
+
+            // Create system tray
+            tray::create_tray(app.handle()).map_err(|e| e.to_string())?;
+
+            // Hide window on close instead of quitting
+            if let Some(window) = app.get_webview_window("main") {
+                let window_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window_clone.hide();
+                    }
+                });
+            }
+
+            // Start background tray updater (every 60s)
+            tray::spawn_tray_updater(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

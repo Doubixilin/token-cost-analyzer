@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { OverviewStats, TrendPoint, DistributionItem, WidgetConfig } from "../types";
+import type { OverviewStats, TrendPoint, DistributionItem, TopNItem, WidgetConfig } from "../types";
 import { saveWidgetConfig, loadWidgetConfig } from "../api/tauriCommands";
 
 const DEFAULT_CONFIG: WidgetConfig = {
@@ -14,7 +14,10 @@ const DEFAULT_CONFIG: WidgetConfig = {
   y: null,
   theme: "auto",
   refresh_interval_sec: 300,
+  time_period: "7d",
 };
+
+export type HourlyData = { hour: number; tokens: number; requests: number };
 
 interface WidgetState {
   config: WidgetConfig;
@@ -22,6 +25,8 @@ interface WidgetState {
   trendData: TrendPoint[];
   distribution: DistributionItem[];
   modelDistribution: DistributionItem[];
+  hourlyData: HourlyData[];
+  topProjects: TopNItem[];
   isLoading: boolean;
   refreshVersion: number;
   showSettings: boolean;
@@ -31,6 +36,8 @@ interface WidgetState {
   setTrendData: (data: TrendPoint[]) => void;
   setDistribution: (data: DistributionItem[]) => void;
   setModelDistribution: (data: DistributionItem[]) => void;
+  setHourlyData: (data: HourlyData[]) => void;
+  setTopProjects: (data: TopNItem[]) => void;
   setLoading: (v: boolean) => void;
   bumpRefresh: () => void;
   toggleSettings: () => void;
@@ -46,21 +53,24 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   trendData: [],
   distribution: [],
   modelDistribution: [],
+  hourlyData: [],
+  topProjects: [],
   isLoading: false,
   refreshVersion: 0,
   showSettings: false,
 
   setConfig: (partial) => {
     set((s) => ({ config: { ...s.config, ...partial } }));
-    // 防抖保存
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => get().saveConfig(), 500);
+    saveTimer = setTimeout(() => get().saveConfig(), 2000);
   },
 
   setOverview: (data) => set({ overview: data }),
   setTrendData: (data) => set({ trendData: data }),
   setDistribution: (data) => set({ distribution: data }),
   setModelDistribution: (data) => set({ modelDistribution: data }),
+  setHourlyData: (data) => set({ hourlyData: data }),
+  setTopProjects: (data) => set({ topProjects: data }),
   setLoading: (v) => set({ isLoading: v }),
   bumpRefresh: () => set((s) => ({ refreshVersion: s.refreshVersion + 1 })),
   toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),

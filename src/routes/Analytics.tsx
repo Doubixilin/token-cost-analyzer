@@ -7,6 +7,7 @@ import { getDistribution, getHeatmapData, getTopN } from "../api/tauriCommands";
 import type { DistributionItem, HeatmapPoint, TopNItem } from "../types";
 import { formatTokens } from "../utils/formatter";
 import { exportExcelReport } from "../utils/excelExport";
+import { getChartColors } from "../utils/chartColors";
 import AdvancedAnalytics from "../components/AdvancedAnalytics";
 
 export default function Analytics() {
@@ -14,6 +15,8 @@ export default function Analytics() {
   const refreshVersion = useStatsStore((s) => s.refreshVersion);
   const overview = useStatsStore((s) => s.overview);
   const trendData = useStatsStore((s) => s.trendData);
+  const theme = useStatsStore((s) => s.theme);
+  const cc = getChartColors(theme);
   const [modelDist, setModelDist] = useState<DistributionItem[]>([]);
   const [sourceDist, setSourceDist] = useState<DistributionItem[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
@@ -53,7 +56,7 @@ export default function Analytics() {
         label: {
           show: true,
           formatter: "{b}\n{d}%",
-          color: "var(--color-text)",
+          color: cc.text,
         },
         labelLine: { show: true, length: 15, length2: 10 },
         emphasis: { label: { show: true, fontSize: 14, fontWeight: "bold" } },
@@ -65,7 +68,7 @@ export default function Analytics() {
         })),
       },
     ],
-  }), [modelDist]);
+  }), [modelDist, cc.text]);
 
   const sourcePieOption = useMemo(() => ({
     title: { text: "工具分布", left: "center", textStyle: { fontSize: 14 } },
@@ -79,7 +82,7 @@ export default function Analytics() {
         label: {
           show: true,
           formatter: "{b}\n{d}%",
-          color: "var(--color-text)",
+          color: cc.text,
         },
         labelLine: { show: true, length: 15, length2: 10 },
         emphasis: { label: { show: true, fontSize: 14, fontWeight: "bold" } },
@@ -91,7 +94,7 @@ export default function Analytics() {
         })),
       },
     ],
-  }), [sourceDist]);
+  }), [sourceDist, cc.text]);
 
   const barOption = useMemo(() => ({
     title: { text: "Top 10 会话", left: "center", textStyle: { fontSize: 14 } },
@@ -102,7 +105,7 @@ export default function Analytics() {
       interval: 100000000,
       axisLabel: {
         formatter: (value: number) => formatTokens(value),
-        color: "var(--color-text-secondary)",
+        color: cc.textSecondary,
       },
     },
     yAxis: { type: "category", data: topSessions.map((d) => d.name.slice(0, 20)).reverse() },
@@ -113,7 +116,7 @@ export default function Analytics() {
         itemStyle: { color: "#3b82f6", borderRadius: [0, 4, 4, 0] },
       },
     ],
-  }), [topSessions]);
+  }), [topSessions, cc.textSecondary]);
 
   const heatmapOption = useMemo(() => {
     const values = heatmapData.map((d) => d.value);

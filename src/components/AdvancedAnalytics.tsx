@@ -12,10 +12,13 @@ import {
   getTopN,
 } from "../api/tauriCommands";
 import { formatTokens } from "../utils/formatter";
+import { getChartColors } from "../utils/chartColors";
 
 export default function AdvancedAnalytics() {
   const filters = useStatsStore((s) => s.filters);
   const refreshVersion = useStatsStore((s) => s.refreshVersion);
+  const theme = useStatsStore((s) => s.theme);
+  const cc = getChartColors(theme);
   const [hourly, setHourly] = useState<{ hour: number; tokens: number; requests: number }[]>([]);
   const [modelTrend, setModelTrend] = useState<{ date: string; model: string; tokens: number }[]>([]);
   const [cumulative, setCumulative] = useState<{ date: string; cost: number }[]>([]);
@@ -74,18 +77,18 @@ export default function AdvancedAnalytics() {
       xAxis: {
         type: "value",
         name: "Input Tokens",
-        axisLabel: { formatter: (v: number) => formatTokens(v), color: "var(--color-text-secondary)" },
-        splitLine: { lineStyle: { color: "var(--color-border)" } },
+        axisLabel: { formatter: (v: number) => formatTokens(v), color: cc.textSecondary },
+        splitLine: { lineStyle: { color: cc.border } },
       },
       yAxis: {
         type: "value",
         name: "Output Tokens",
-        axisLabel: { formatter: (v: number) => formatTokens(v), color: "var(--color-text-secondary)" },
-        splitLine: { lineStyle: { color: "var(--color-border)" } },
+        axisLabel: { formatter: (v: number) => formatTokens(v), color: cc.textSecondary },
+        splitLine: { lineStyle: { color: cc.border } },
       },
       series,
     };
-  }, [scatter]);
+  }, [scatter, cc.textSecondary, cc.border]);
 
   // B1. Hourly Distribution
   const hourlyOption = useMemo(() => {
@@ -100,7 +103,7 @@ export default function AdvancedAnalytics() {
       xAxis: {
         type: "category",
         data: hours,
-        axisLabel: { color: "var(--color-text-secondary)" },
+        axisLabel: { color: cc.textSecondary },
       },
       yAxis: [
         { type: "value", name: "Tokens", axisLabel: { formatter: (v: number) => formatTokens(v) } },
@@ -123,7 +126,7 @@ export default function AdvancedAnalytics() {
         },
       ],
     };
-  }, [hourly]);
+  }, [hourly, cc.textSecondary]);
 
   // B2. Model Migration Trend (stacked area) — O(n) via Map lookup
   const modelTrendOption = useMemo(() => {
@@ -145,11 +148,11 @@ export default function AdvancedAnalytics() {
       tooltip: { trigger: "axis" },
       legend: { data: models, bottom: 0, type: "scroll" },
       grid: { left: "3%", right: "4%", bottom: "15%", top: "15%", containLabel: true },
-      xAxis: { type: "category", boundaryGap: false, data: dates, axisLabel: { color: "var(--color-text-secondary)" } },
+      xAxis: { type: "category", boundaryGap: false, data: dates, axisLabel: { color: cc.textSecondary } },
       yAxis: { type: "value", axisLabel: { formatter: (v: number) => formatTokens(v) } },
       series,
     };
-  }, [modelTrend]);
+  }, [modelTrend, cc.textSecondary]);
 
   // D. Cumulative Cost
   const cumulativeOption = useMemo(() => {
@@ -162,7 +165,7 @@ export default function AdvancedAnalytics() {
       title: { text: "累计成本曲线", left: "center", textStyle: { fontSize: 14 } },
       tooltip: { trigger: "axis", formatter: (p: any) => `${p.data[0]}<br/>累计成本: $${p.data[1]}` },
       grid: { left: "3%", right: "4%", bottom: "10%", top: "15%", containLabel: true },
-      xAxis: { type: "category", data: cumulative.map((d) => d.date), axisLabel: { color: "var(--color-text-secondary)" } },
+      xAxis: { type: "category", data: cumulative.map((d) => d.date), axisLabel: { color: cc.textSecondary } },
       yAxis: { type: "value", name: "Cost ($)", axisLabel: { formatter: "${value}" } },
       series: [
         {
@@ -175,7 +178,7 @@ export default function AdvancedAnalytics() {
         },
       ],
     };
-  }, [cumulative]);
+  }, [cumulative, cc.textSecondary]);
 
   // C. Sankey
   const sankeyOption = useMemo(() => {
@@ -197,11 +200,11 @@ export default function AdvancedAnalytics() {
           data,
           links,
           lineStyle: { color: "gradient", curveness: 0.5 },
-          label: { color: "var(--color-text)", fontSize: 11 },
+          label: { color: cc.text, fontSize: 11 },
         },
       ],
     };
-  }, [sankey]);
+  }, [sankey, cc.text]);
 
   // C. Agent Type Pie
   const agentPieOption = useMemo(() => ({
@@ -212,12 +215,12 @@ export default function AdvancedAnalytics() {
         type: "pie",
         radius: ["40%", "70%"],
         itemStyle: { borderRadius: 6, borderColor: "#fff", borderWidth: 2 },
-        label: { show: true, formatter: "{b}\n{d}%", color: "var(--color-text)" },
+        label: { show: true, formatter: "{b}\n{d}%", color: cc.text },
         labelLine: { show: true },
         data: agentDist.map((d) => ({ name: d.name, value: d.value })),
       },
     ],
-  }), [agentDist]);
+  }), [agentDist, cc.text]);
 
   // C. Project Top Bar
   const projectBarOption = useMemo(() => ({
@@ -227,7 +230,7 @@ export default function AdvancedAnalytics() {
     xAxis: {
       type: "value",
       interval: 100000000,
-      axisLabel: { formatter: (v: number) => formatTokens(v), color: "var(--color-text-secondary)" },
+      axisLabel: { formatter: (v: number) => formatTokens(v), color: cc.textSecondary },
     },
     yAxis: { type: "category", data: projectTop.map((d) => d.name.slice(0, 20)).reverse() },
     series: [
@@ -237,7 +240,7 @@ export default function AdvancedAnalytics() {
         itemStyle: { color: "#8b5cf6", borderRadius: [0, 4, 4, 0] },
       },
     ],
-  }), [projectTop]);
+  }), [projectTop, cc.textSecondary]);
 
   const ChartCard = ({ option, height = 300, ariaLabel }: { option: any; height?: number; ariaLabel: string }) => (
     <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label={ariaLabel}>

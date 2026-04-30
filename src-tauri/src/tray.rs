@@ -1,8 +1,10 @@
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    Emitter, Manager,
+    Manager,
 };
+
+use crate::widget;
 
 pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItem::with_id(app, "show_main", "显示主窗口", true, None::<&str>)?;
@@ -24,19 +26,12 @@ pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Erro
                 }
             }
             "toggle_widget" => {
-                if let Some(win) = app.get_webview_window("widget") {
-                    if win.is_visible().unwrap_or(false) {
-                        let _ = win.hide();
-                    } else {
-                        let _ = win.show();
-                        let _ = win.set_focus();
-                    }
-                } else {
-                    let _ = app.emit("toggle_widget", ());
+                if let Err(e) = widget::toggle_widget(app.clone()) {
+                    eprintln!("[Tray] 小组件切换失败: {}", e);
                 }
             }
             "quit" => {
-                app.exit(0);
+                std::process::exit(0);
             }
             _ => {}
         })

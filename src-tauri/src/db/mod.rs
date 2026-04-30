@@ -13,9 +13,11 @@ pub fn get_db_path(app_handle: &tauri::AppHandle) -> std::result::Result<PathBuf
 
 pub fn init_db(app_handle: &tauri::AppHandle) -> std::result::Result<Connection, String> {
     let db_path = get_db_path(app_handle)?;
+    eprintln!("[db] Opening database at {:?}", db_path);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;").map_err(|e| e.to_string())?;
     schema::create_tables(&conn).map_err(|e| e.to_string())?;
     schema::init_default_pricing(&conn).map_err(|e| e.to_string())?;
+    eprintln!("[db] Database initialized successfully");
     Ok(conn)
 }

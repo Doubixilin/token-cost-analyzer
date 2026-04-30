@@ -66,21 +66,27 @@ fn get_filter_options(state: tauri::State<AppState>) -> Result<(Vec<String>, Vec
 
 #[tauri::command]
 fn refresh_data(state: tauri::State<AppState>) -> Result<usize, String> {
-    // Step 1: Scan files and read sync state (outside lock for I/O)
+    eprintln!("[sync] Step 1: Scanning session files...");
     let files = scan_session_files();
+    eprintln!("[sync] Found {} session files", files.len());
     let prev_state = {
         let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
         get_file_sync_state(&conn).unwrap_or_else(|_| std::collections::HashMap::new())
     };
+    eprintln!("[sync] Previous sync state has {} entries", prev_state.len());
 
     // Step 2: Parse only changed files (outside lock)
     let mut progress = |phase: &str, current: usize, total: usize| {
         println!("[{}] Progress: {}/{}", phase, current, total);
     };
+    eprintln!("[sync] Step 2: Parsing changed files...");
     let (records, changed_paths) = parse_changed_files(&files, &prev_state, &mut progress);
+    eprintln!("[sync] Parsed {} records from {} changed files", records.len(), changed_paths.len());
 
     // Step 3: Insert and update sync state (inside lock)
+    eprintln!("[sync] Step 3: Acquiring DB lock...");
     let mut conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
+    eprintln!("[sync] DB lock acquired, inserting records...");
     let current_paths: Vec<String> = files.iter()
         .filter_map(|(p, _, _)| p.to_str().map(|s| s.to_string()))
         .collect();
@@ -91,19 +97,24 @@ fn refresh_data(state: tauri::State<AppState>) -> Result<usize, String> {
 
     let count = insert_and_update_sync(&mut conn, &records, &changed_paths, &file_mtimes, &current_paths)
         .map_err(|e| e.to_string())?;
+    eprintln!("[sync] Inserted {} records, recalculating costs...", count);
     recalc_costs(&mut conn).map_err(|e| e.to_string())?;
+    eprintln!("[sync] Done! {} records inserted", count);
     Ok(count)
 }
 
 #[tauri::command]
 fn get_model_pricing(state: tauri::State<AppState>) -> Result<Vec<ModelPricing>, String> {
+    eprintln!("[pricing] Fetching model pricing...");
     let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
-    queries::get_model_pricing(&conn).map_err(|e| e.to_string())
+    let result = queries::get_model_pricing(&conn).map_err(|e| e.to_string())?;
+    eprintln!("[pricing] Got {} models", result.len());
+    Ok(result)
 }
 
 #[tauri::command]
 fn set_model_pricing(state: tauri::State<AppState>, pricing: ModelPricing) -> Result<(), String> {
-    let mut conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
+    let mut conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
     queries::set_model_pricing(&conn, &pricing).map_err(|e| e.to_string())?;
     recalc_costs(&mut conn).map_err(|e| e.to_string())?;
     Ok(())
@@ -179,7 +190,7 @@ fn get_sankey_data(state: tauri::State<AppState>, filters: FilterParams) -> Resu
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_window_state::Builder::default().with_denylist(&["widget"]).build())
         .setup(|app| {
             let conn = db::init_db(&app.handle()).map_err(|e| e.to_string())?;
             app.manage(AppState { db: Mutex::new(conn) });
@@ -196,6 +207,11 @@ pub fn run() {
                         let _ = win_clone.hide();
                     }
                 });
+            }
+
+            // 预创建小组件窗口（必须在主线程，setup 是主线程）
+            if let Err(e) = widget::precreate_widget(app.handle()) {
+                eprintln!("[Widget] Precreate failed: {}", e);
             }
 
             Ok(())
@@ -226,5 +242,7 @@ pub fn run() {
             widget::unpin_widget_from_desktop,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            eprintln!("应用运行失败: {}", e);
+        });
 }

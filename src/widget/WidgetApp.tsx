@@ -1,78 +1,146 @@
-import { useEffect, Component, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useRef, Component, type ReactNode, memo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Activity, RefreshCw, Settings, Lock, Unlock, Pin, PinOff, X } from "lucide-react";
-import { getOverviewStats, getTrendData, getDistribution, embedWidgetToDesktop, unpinWidgetFromDesktop } from "../api/tauriCommands";
+import { listen } from "@tauri-apps/api/event";
+import { Activity, RefreshCw, Settings, Lock, Unlock, Pin, PinOff, X, AlertCircle, GripVertical } from "lucide-react";
+import { getOverviewStats, getTrendData, getDistribution, getHourlyDistribution, getTopN, embedWidgetToDesktop, unpinWidgetFromDesktop } from "../api/tauriCommands";
 import { formatCost, formatTokens, formatNumber } from "../utils/formatter";
 import { useWidgetStore } from "../stores/useWidgetStore";
-import type { OverviewStats, TrendPoint, DistributionItem } from "../types";
+import type { FilterParams, TimePeriod } from "../types";
 import dayjs from "dayjs";
 
+// --- Color palette ---
+const PALETTE = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#06b6d4", "#f97316", "#84cc16"];
+const colorCache = new Map<string, string>();
+let colorIdx = 0;
+function getColor(key: string): string {
+  let c = colorCache.get(key);
+  if (!c) { c = PALETTE[colorIdx % PALETTE.length]; colorCache.set(key, c); colorIdx++; }
+  return c;
+}
+
+// --- Filter helpers ---
+function getFiltersFromPeriod(period: TimePeriod): FilterParams {
+  const base = { sources: null, models: null, projects: null, agent_types: null };
+  switch (period) {
+    case "today":
+      return { ...base, start_time: dayjs().startOf("day").unix(), end_time: dayjs().endOf("day").unix() };
+    case "7d":
+      return { ...base, start_time: dayjs().subtract(7, "day").startOf("day").unix(), end_time: dayjs().endOf("day").unix() };
+    case "30d":
+      return { ...base, start_time: dayjs().subtract(30, "day").startOf("day").unix(), end_time: dayjs().endOf("day").unix() };
+    case "all":
+    default:
+      return { ...base, start_time: null, end_time: null };
+  }
+}
+
+const PERIOD_OPTIONS: { value: TimePeriod; label: string }[] = [
+  { value: "today", label: "今天" },
+  { value: "7d", label: "7天" },
+  { value: "30d", label: "30天" },
+  { value: "all", label: "全部" },
+];
+
 // --- Stat Mini Card ---
-function StatMini({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
+const StatMini = memo(function StatMini({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
   return (
-    <div className="widget-card flex items-center gap-3 px-3 py-2.5">
-      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[14px] font-bold" style={{ backgroundColor: color + "20", color }}>
+    <div className="widget-card flex items-center gap-2.5 px-2.5 py-2">
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[13px] font-bold shrink-0" style={{ backgroundColor: color + "20", color }}>
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-[11px] text-[var(--color-text-secondary)] leading-tight">{label}</p>
+        <p className="text-[10px] text-[var(--color-text-secondary)] leading-tight">{label}</p>
         <p className="text-[15px] font-bold text-[var(--color-text)] leading-tight truncate">{value}</p>
       </div>
     </div>
   );
-}
+});
 
-// --- Overview Module ---
-function OverviewModule({ overview }: { overview: OverviewStats | null }) {
-  if (!overview) return (
+// --- Empty placeholder ---
+function EmptyModule({ text }: { text: string }) {
+  return (
     <div className="widget-card px-3 py-4 text-center">
-      <p className="text-[11px] text-[var(--color-text-secondary)]">暂无数据</p>
-      <p className="text-[9px] text-[var(--color-text-secondary)] mt-1">请先在主窗口同步数据</p>
+      <p className="text-[11px] text-[var(--color-text-secondary)]">{text}</p>
     </div>
   );
+}
+
+// --- Overview Module (2x2 grid) ---
+const OverviewModule = memo(function OverviewModule() {
+  const overview = useWidgetStore(s => s.overview);
+  if (!overview) return <EmptyModule text="暂无数据 — 请先在主窗口同步" />;
+
+  const totalCache = overview.total_cache_read + overview.total_cache_creation;
+  const cacheHitRate = totalCache > 0 ? (overview.total_cache_read / totalCache) * 100 : 0;
+
   return (
-    <div className="space-y-1.5">
+    <div className="grid grid-cols-2 gap-1.5">
       <StatMini icon="$" label="总成本" value={formatCost(overview.total_cost)} color="#10b981" />
       <StatMini icon="T" label="总 Token" value={formatTokens(overview.total_tokens)} color="#3b82f6" />
       <StatMini icon="#" label="总请求" value={formatNumber(overview.total_requests)} color="#8b5cf6" />
+      <StatMini icon="%" label="缓存命中" value={totalCache > 0 ? `${cacheHitRate.toFixed(0)}%` : "—"} color="#f59e0b" />
     </div>
   );
-}
+});
 
-// --- Mini Trend Module ---
-function MiniTrendModule({ trendData }: { trendData: TrendPoint[] }) {
-  if (trendData.length === 0) return null;
-  const recent = trendData.slice(-14);
-  const maxVal = Math.max(...recent.map(d => d.input_tokens + d.output_tokens), 1);
+// --- Sparkline Trend Module ---
+const TrendModule = memo(function TrendModule() {
+  const trendData = useWidgetStore(s => s.trendData);
+  if (trendData.length === 0) return <EmptyModule text="暂无趋势数据" />;
+
+  const recent = trendData.slice(-30);
+  const values = recent.map(d => d.input_tokens + d.output_tokens);
+  const maxVal = Math.max(...values, 1);
+  const minVal = 0;
+  const range = maxVal - minVal || 1;
+
+  const w = 280;
+  const h = 48;
+  const padX = 2;
+  const padY = 4;
+  const plotW = w - padX * 2;
+  const plotH = h - padY * 2;
+
+  const points = values.map((v, i) => {
+    const x = padX + (i / Math.max(values.length - 1, 1)) * plotW;
+    const y = padY + plotH - ((v - minVal) / range) * plotH;
+    return `${x},${y}`;
+  });
+
+  const linePoints = points.join(" ");
+  const areaPoints = `${padX},${padY + plotH} ${linePoints} ${padX + plotW},${padY + plotH}`;
+
+  const latestVal = values[values.length - 1] || 0;
 
   return (
     <div className="widget-card px-3 py-2.5">
-      <p className="text-[11px] text-[var(--color-text-secondary)] mb-2">近 {recent.length} 天趋势</p>
-      <div className="flex items-end gap-[2px] h-[48px]">
-        {recent.map((d, i) => {
-          const total = d.input_tokens + d.output_tokens || 1;
-          const h = (total / maxVal) * 100;
-          return (
-            <div key={i} className="flex-1 flex flex-col justify-end h-full gap-[1px]">
-              <div className="rounded-t-[2px] bg-[#3b82f6] opacity-80" style={{ height: `${(d.input_tokens / total) * h}%` }} />
-              <div className="rounded-t-[2px] bg-[#10b981] opacity-80" style={{ height: `${(d.output_tokens / total) * h}%` }} />
-            </div>
-          );
-        })}
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-[11px] text-[var(--color-text-secondary)]">消耗趋势</p>
+        <span className="text-[11px] font-medium text-[var(--color-text)]">{formatTokens(latestVal)}</span>
       </div>
-      <div className="flex justify-between mt-1">
+      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <polygon points={areaPoints} fill="url(#sparkFill)" />
+        <polyline points={linePoints} fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <div className="flex justify-between mt-0.5">
         <span className="text-[9px] text-[var(--color-text-secondary)]">{dayjs(recent[0].date).format("MM/DD")}</span>
         <span className="text-[9px] text-[var(--color-text-secondary)]">{dayjs(recent[recent.length - 1].date).format("MM/DD")}</span>
       </div>
     </div>
   );
-}
+});
 
 // --- Source Split Module ---
-function SourceSplitModule({ distribution }: { distribution: DistributionItem[] }) {
-  if (distribution.length === 0) return null;
+const SourceSplitModule = memo(function SourceSplitModule() {
+  const distribution = useWidgetStore(s => s.distribution);
+  if (distribution.length === 0) return <EmptyModule text="暂无工具分布数据" />;
   const total = distribution.reduce((s, d) => s + d.value, 0) || 1;
-  const colors: Record<string, string> = { claude: "#8b5cf6", kimi: "#3b82f6" };
 
   return (
     <div className="widget-card px-3 py-2.5">
@@ -80,7 +148,7 @@ function SourceSplitModule({ distribution }: { distribution: DistributionItem[] 
       <div className="space-y-1.5">
         {distribution.map(d => (
           <div key={d.name} className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[d.name.toLowerCase()] || "#94a3b8" }} />
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getColor(d.name.toLowerCase()) }} />
             <span className="text-[11px] text-[var(--color-text)] flex-1 truncate">{d.name}</span>
             <span className="text-[11px] font-medium text-[var(--color-text)]">{((d.value / total) * 100).toFixed(1)}%</span>
           </div>
@@ -88,19 +156,19 @@ function SourceSplitModule({ distribution }: { distribution: DistributionItem[] 
       </div>
       <div className="flex h-1.5 rounded-full overflow-hidden mt-2 bg-[var(--color-border)]">
         {distribution.map(d => (
-          <div key={d.name} className="h-full" style={{ width: `${(d.value / total) * 100}%`, backgroundColor: colors[d.name.toLowerCase()] || "#94a3b8" }} />
+          <div key={d.name} className="h-full transition-[width]" style={{ width: `${(d.value / total) * 100}%`, backgroundColor: getColor(d.name.toLowerCase()) }} />
         ))}
       </div>
     </div>
   );
-}
+});
 
 // --- Model Distribution Module ---
-function ModelDistModule({ modelDistribution }: { modelDistribution: DistributionItem[] }) {
-  if (modelDistribution.length === 0) return null;
+const ModelDistModule = memo(function ModelDistModule() {
+  const modelDistribution = useWidgetStore(s => s.modelDistribution);
+  if (modelDistribution.length === 0) return <EmptyModule text="暂无模型分布数据" />;
   const top5 = modelDistribution.slice(0, 5);
   const maxVal = Math.max(...top5.map(d => d.value), 1);
-  const barColors = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
 
   return (
     <div className="widget-card px-3 py-2.5">
@@ -113,59 +181,87 @@ function ModelDistModule({ modelDistribution }: { modelDistribution: Distributio
               <span className="text-[10px] text-[var(--color-text-secondary)]">{formatTokens(d.value)}</span>
             </div>
             <div className="h-1.5 bg-[var(--color-border)] rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all" style={{ width: `${(d.value / maxVal) * 100}%`, backgroundColor: barColors[i % barColors.length] }} />
+              <div className="h-full rounded-full transition-[width]" style={{ width: `${(d.value / maxVal) * 100}%`, backgroundColor: PALETTE[i % PALETTE.length] }} />
             </div>
           </div>
         ))}
       </div>
     </div>
   );
-}
+});
 
-// --- Cache Stats Module ---
-function CacheStatsModule({ overview }: { overview: OverviewStats | null }) {
-  if (!overview) return null;
-  const totalCache = overview.total_cache_read + overview.total_cache_creation;
-  if (totalCache === 0) return null;
-  const readPct = (overview.total_cache_read / totalCache) * 100;
+// --- Hourly Distribution Module ---
+const HourlyDistModule = memo(function HourlyDistModule() {
+  const hourlyData = useWidgetStore(s => s.hourlyData);
+  if (hourlyData.length === 0) return <EmptyModule text="暂无时段分布数据" />;
+
+  const map = new Map<number, number>();
+  for (const d of hourlyData) map.set(d.hour, d.tokens);
+  const maxVal = Math.max(...Array.from(map.values()), 1);
 
   return (
     <div className="widget-card px-3 py-2.5">
-      <p className="text-[11px] text-[var(--color-text-secondary)] mb-2">缓存效率</p>
-      <div className="flex items-center gap-3">
-        <div className="flex-1">
-          <div className="flex h-2 rounded-full overflow-hidden bg-[var(--color-border)]">
-            <div className="h-full bg-[#10b981]" style={{ width: `${readPct}%` }} />
-            <div className="h-full bg-[#f59e0b]" style={{ width: `${100 - readPct}%` }} />
-          </div>
-          <div className="flex justify-between mt-1">
-            <span className="text-[9px] text-[#10b981]">读取 {formatTokens(overview.total_cache_read)}</span>
-            <span className="text-[9px] text-[#f59e0b]">创建 {formatTokens(overview.total_cache_creation)}</span>
-          </div>
-        </div>
-        <div className="text-right">
-          <p className="text-[16px] font-bold text-[var(--color-text)]">{readPct.toFixed(0)}%</p>
-          <p className="text-[9px] text-[var(--color-text-secondary)]">命中率</p>
-        </div>
+      <p className="text-[11px] text-[var(--color-text-secondary)] mb-2">时段分布</p>
+      <div className="flex items-end gap-[2px] h-[40px]">
+        {Array.from({ length: 24 }, (_, i) => {
+          const val = map.get(i) || 0;
+          const pct = (val / maxVal) * 100;
+          return (
+            <div key={i} className="flex-1 flex items-end h-full">
+              <div
+                className="w-full rounded-t-[1px] transition-[height]"
+                style={{ height: `${Math.max(pct, 2)}%`, backgroundColor: val > 0 ? "#8b5cf6" : "var(--color-border)", opacity: val > 0 ? 0.8 : 0.3 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-between mt-0.5">
+        <span className="text-[8px] text-[var(--color-text-secondary)]">0h</span>
+        <span className="text-[8px] text-[var(--color-text-secondary)]">12h</span>
+        <span className="text-[8px] text-[var(--color-text-secondary)]">23h</span>
       </div>
     </div>
   );
-}
+});
+
+// --- Top Projects Module ---
+const TopProjectsModule = memo(function TopProjectsModule() {
+  const topProjects = useWidgetStore(s => s.topProjects);
+  if (topProjects.length === 0) return <EmptyModule text="暂无项目消耗数据" />;
+  const maxVal = Math.max(...topProjects.map(d => d.value), 1);
+
+  return (
+    <div className="widget-card px-3 py-2.5">
+      <p className="text-[11px] text-[var(--color-text-secondary)] mb-2">项目消耗 Top 5</p>
+      <div className="space-y-1.5">
+        {topProjects.slice(0, 5).map((d, i) => {
+          const shortName = d.name.split(/[/\\]/).pop() || d.name;
+          return (
+            <div key={d.id} className="space-y-0.5">
+              <div className="flex justify-between">
+                <span className="text-[10px] text-[var(--color-text)] truncate max-w-[70%]" title={d.name}>{shortName}</span>
+                <span className="text-[10px] text-[var(--color-text-secondary)]">{formatTokens(d.value)}</span>
+              </div>
+              <div className="h-1.5 bg-[var(--color-border)] rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-[width]" style={{ width: `${(d.value / maxVal) * 100}%`, backgroundColor: PALETTE[i % PALETTE.length] }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 // --- Module Registry ---
-interface ModuleProps {
-  overview: OverviewStats | null;
-  trendData: TrendPoint[];
-  distribution: DistributionItem[];
-  modelDistribution: DistributionItem[];
-}
-
-const MODULE_MAP: Record<string, React.FC<ModuleProps>> = {
-  overview: ({ overview }) => <OverviewModule overview={overview} />,
-  trend: ({ trendData }) => <MiniTrendModule trendData={trendData} />,
-  source_split: ({ distribution }) => <SourceSplitModule distribution={distribution} />,
-  model_dist: ({ modelDistribution }) => <ModelDistModule modelDistribution={modelDistribution} />,
-  cache_stats: ({ overview }) => <CacheStatsModule overview={overview} />,
+const MODULE_MAP: Record<string, React.FC> = {
+  overview: OverviewModule,
+  trend: TrendModule,
+  source_split: SourceSplitModule,
+  model_dist: ModelDistModule,
+  hourly_dist: HourlyDistModule,
+  top_projects: TopProjectsModule,
 };
 
 const MODULE_LABELS: Record<string, string> = {
@@ -173,12 +269,38 @@ const MODULE_LABELS: Record<string, string> = {
   trend: "消耗趋势",
   source_split: "工具分布",
   model_dist: "模型分布",
-  cache_stats: "缓存效率",
+  hourly_dist: "时段分布",
+  top_projects: "项目消耗",
 };
 
+// --- Time Period Selector ---
+const TimePeriodSelector = memo(function TimePeriodSelector() {
+  const timePeriod = useWidgetStore(s => s.config.time_period);
+  const setConfig = useWidgetStore(s => s.setConfig);
+
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-1.5">
+      {PERIOD_OPTIONS.map(opt => (
+        <button
+          key={opt.value}
+          onClick={() => setConfig({ time_period: opt.value })}
+          className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition-all ${
+            timePeriod === opt.value
+              ? "bg-[var(--color-primary)] text-white shadow-sm"
+              : "bg-white/10 border border-white/15 text-[var(--color-text-secondary)] hover:bg-white/20 dark:bg-white/5 dark:border-white/10"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+});
+
 // --- Settings Panel ---
-function SettingsPanel() {
-  const { config, setConfig } = useWidgetStore();
+const SettingsPanel = memo(function SettingsPanel() {
+  const config = useWidgetStore(s => s.config);
+  const setConfig = useWidgetStore(s => s.setConfig);
   const allModuleIds = Object.keys(MODULE_MAP);
 
   const toggleModule = (id: string) => {
@@ -213,19 +335,41 @@ function SettingsPanel() {
       </div>
     </div>
   );
-}
+});
 
 // --- Widget Header ---
-function WidgetHeader() {
-  const { config, setConfig, toggleSettings, bumpRefresh, isLoading } = useWidgetStore();
+const WidgetHeader = memo(function WidgetHeader() {
+  const locked = useWidgetStore(s => s.config.locked);
+  const pinned = useWidgetStore(s => s.config.pinned_to_desktop);
+  const setConfig = useWidgetStore(s => s.setConfig);
+  const toggleSettings = useWidgetStore(s => s.toggleSettings);
+  const bumpRefresh = useWidgetStore(s => s.bumpRefresh);
+  const isLoading = useWidgetStore(s => s.isLoading);
+  const headerRef = useRef<HTMLDivElement>(null);
 
-  const handleClose = async () => {
-    try { await getCurrentWindow().hide(); } catch (e) { console.error(e); }
-  };
+  // Native mousedown listener for drag (more reliable than React synthetic events
+  // with startDragging). Inspired by Electron's -webkit-app-region pattern.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const onMouseDown = (e: MouseEvent) => {
+      // Don't start drag when clicking buttons
+      if ((e.target as HTMLElement).closest("button")) return;
+      if (e.button === 0 && !locked) {
+        getCurrentWindow().startDragging();
+      }
+    };
+    el.addEventListener("mousedown", onMouseDown);
+    return () => el.removeEventListener("mousedown", onMouseDown);
+  }, [locked]);
 
-  const handlePin = async () => {
+  const handleClose = useCallback(async () => {
+    try { await getCurrentWindow().hide(); } catch (e) { console.error("hide failed:", e); }
+  }, []);
+
+  const handlePin = useCallback(async () => {
     try {
-      if (config.pinned_to_desktop) {
+      if (pinned) {
         await unpinWidgetFromDesktop();
         setConfig({ pinned_to_desktop: false });
       } else {
@@ -235,37 +379,89 @@ function WidgetHeader() {
     } catch (e) {
       console.error("桌面钉入操作失败:", e);
     }
-  };
+  }, [pinned, setConfig]);
 
   return (
-    <div className="flex items-center justify-between px-3 py-2 select-none" {...(!config.locked ? { "data-tauri-drag-region": "" } : {})}>
+    <div
+      ref={headerRef}
+      className="flex items-center justify-between px-3 py-2 select-none cursor-grab"
+    >
       <div className="flex items-center gap-2 pointer-events-none">
         <Activity size={14} className="text-[var(--color-primary)]" />
         <span className="text-[12px] font-semibold text-[var(--color-text)]">Token 小组件</span>
+        {!locked && <GripVertical size={12} className="text-[var(--color-text-secondary)] opacity-40" />}
       </div>
       <div className="flex items-center gap-0.5">
-        <button onClick={bumpRefresh} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" title="刷新">
+        <button onClick={bumpRefresh} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" aria-label="刷新数据">
           <RefreshCw size={13} className={`text-[var(--color-text-secondary)] ${isLoading ? "animate-spin" : ""}`} />
         </button>
-        <button onClick={toggleSettings} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" title="设置">
+        <button onClick={toggleSettings} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" aria-label="设置">
           <Settings size={13} className="text-[var(--color-text-secondary)]" />
         </button>
-        <button onClick={handlePin} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" title={config.pinned_to_desktop ? "取消钉入" : "钉入桌面"}>
-          {config.pinned_to_desktop
+        <button onClick={handlePin} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" aria-label={pinned ? "取消钉入" : "钉入桌面"}>
+          {pinned
             ? <PinOff size={13} className="text-[var(--color-primary)]" />
             : <Pin size={13} className="text-[var(--color-text-secondary)]" />
           }
         </button>
-        <button onClick={() => setConfig({ locked: !config.locked })} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" title={config.locked ? "解锁" : "锁定"}>
-          {config.locked ? <Lock size={13} className="text-[var(--color-text-secondary)]" /> : <Unlock size={13} className="text-[var(--color-text-secondary)]" />}
+        <button onClick={() => setConfig({ locked: !locked })} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" aria-label={locked ? "解锁" : "锁定"}>
+          {locked ? <Lock size={13} className="text-[var(--color-text-secondary)]" /> : <Unlock size={13} className="text-[var(--color-text-secondary)]" />}
         </button>
-        <button onClick={handleClose} className="p-1.5 rounded-md hover:bg-red-500/20 transition-colors" title="关闭">
+        <button onClick={handleClose} className="p-1.5 rounded-md hover:bg-red-500/20 transition-colors" aria-label="关闭">
           <X size={13} className="text-[var(--color-text-secondary)]" />
         </button>
       </div>
     </div>
   );
-}
+});
+
+// --- Error toast ---
+const ErrorToast = memo(function ErrorToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+  return (
+    <div className="mx-2.5 mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/15 border border-red-500/20 text-[10px] text-red-400">
+      <AlertCircle size={12} />
+      <span className="flex-1 truncate">{message}</span>
+      <button onClick={onDismiss} className="shrink-0 hover:opacity-70"><X size={10} /></button>
+    </div>
+  );
+});
+
+// --- Widget Body (memo isolated) ---
+const WidgetBody = memo(function WidgetBody() {
+  const selectedModules = useWidgetStore(s => s.config.selected_modules);
+  const isLoading = useWidgetStore(s => s.isLoading);
+  const overview = useWidgetStore(s => s.overview);
+
+  if (!overview && isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-[11px] text-[var(--color-text-secondary)]">加载数据中...</p>
+      </div>
+    );
+  }
+
+  if (selectedModules.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-[11px] text-[var(--color-text-secondary)]">请在设置中选择显示模块</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto px-2.5 pb-2.5 space-y-2">
+      {selectedModules.map(id => {
+        const Comp = MODULE_MAP[id];
+        if (!Comp) return null;
+        return <Comp key={id} />;
+      })}
+    </div>
+  );
+});
 
 // --- Error Boundary ---
 class WidgetErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: string }> {
@@ -291,16 +487,32 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode }, { hasError:
 
 // --- Main Widget App ---
 export default function WidgetApp() {
-  const {
-    config, overview, trendData, distribution, modelDistribution,
-    setOverview, setTrendData, setDistribution, setModelDistribution, setLoading,
-    isLoading, refreshVersion, showSettings, loadConfig,
-  } = useWidgetStore();
+  const config = useWidgetStore(s => s.config);
+  const showSettings = useWidgetStore(s => s.showSettings);
+  const loadConfig = useWidgetStore(s => s.loadConfig);
+  const refreshVersion = useWidgetStore(s => s.refreshVersion);
+  const setOverview = useWidgetStore(s => s.setOverview);
+  const setTrendData = useWidgetStore(s => s.setTrendData);
+  const setDistribution = useWidgetStore(s => s.setDistribution);
+  const setModelDistribution = useWidgetStore(s => s.setModelDistribution);
+  const setHourlyData = useWidgetStore(s => s.setHourlyData);
+  const setTopProjects = useWidgetStore(s => s.setTopProjects);
+  const setLoading = useWidgetStore(s => s.setLoading);
 
-  // 初始化：加载配置
-  useEffect(() => { loadConfig(); }, []);
+  const [error, setError] = useState<string | null>(null);
 
-  // 应用主题
+  // Initialize config
+  useEffect(() => { loadConfig(); }, [loadConfig]);
+
+  // Listen for config changes from main app Settings page
+  useEffect(() => {
+    const unlisten = listen("widget-config-changed", () => {
+      loadConfig();
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [loadConfig]);
+
+  // Apply theme
   useEffect(() => {
     const applyTheme = () => {
       if (config.theme === "dark" || (config.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
@@ -317,31 +529,45 @@ export default function WidgetApp() {
     }
   }, [config.theme]);
 
-  // 应用透明度
+  // Apply opacity
   useEffect(() => {
-    document.documentElement.style.opacity = String(config.opacity);
-  }, [config.opacity]);
+    const root = document.documentElement;
+    const glass = root.querySelector('.widget-glass') as HTMLElement | null;
+    if (!glass) return;
+    const alpha = config.opacity;
+    const isDark = root.classList.contains("dark");
+    glass.style.background = isDark
+      ? `rgba(15, 23, 42, ${0.82 * alpha})`
+      : `rgba(255, 255, 255, ${0.78 * alpha})`;
+  }, [config.opacity, config.theme]);
 
-  // 拉取数据
+  // Fetch data
   useEffect(() => {
     let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       try {
-        const emptyFilters = { start_time: null, end_time: null, sources: null, models: null, projects: null, agent_types: null };
-        const [ov, trend, dist, modelDist] = await Promise.all([
-          getOverviewStats(emptyFilters),
-          getTrendData(emptyFilters, "day"),
-          getDistribution(emptyFilters, "source"),
-          getDistribution(emptyFilters, "model"),
+        const filters = getFiltersFromPeriod(config.time_period);
+        const trendGranularity = config.time_period === "today" ? "hour" : "day";
+        const [ov, trend, dist, modelDist, hourly, projects] = await Promise.all([
+          getOverviewStats(filters),
+          getTrendData(filters, trendGranularity),
+          getDistribution(filters, "source"),
+          getDistribution(filters, "model"),
+          getHourlyDistribution(filters),
+          getTopN(filters, "project", "tokens", 5),
         ]);
         if (!cancelled) {
           setOverview(ov);
           setTrendData(trend);
           setDistribution(dist);
           setModelDistribution(modelDist);
+          setHourlyData(hourly);
+          setTopProjects(projects);
+          setError(null);
         }
       } catch (e) {
+        if (!cancelled) setError("数据加载失败，请检查主窗口同步状态");
         console.error("小组件数据加载失败:", e);
       } finally {
         if (!cancelled) setLoading(false);
@@ -349,9 +575,9 @@ export default function WidgetApp() {
     };
     fetchData();
     return () => { cancelled = true; };
-  }, [refreshVersion]);
+  }, [refreshVersion, config.time_period, setLoading, setOverview, setTrendData, setDistribution, setModelDistribution, setHourlyData, setTopProjects]);
 
-  // 自动刷新
+  // Auto-refresh
   useEffect(() => {
     if (config.refresh_interval_sec <= 0) return;
     const timer = setInterval(() => {
@@ -360,33 +586,15 @@ export default function WidgetApp() {
     return () => clearInterval(timer);
   }, [config.refresh_interval_sec]);
 
-  const dataProps = { overview, trendData, distribution, modelDistribution };
-
   return (
     <WidgetErrorBoundary>
       <div className="h-full flex flex-col">
         <div className="widget-glass h-full flex flex-col overflow-hidden">
           <WidgetHeader />
-
-          <div className="flex-1 overflow-y-auto px-2.5 pb-2.5 space-y-2">
-            {!overview && isLoading && (
-              <div className="text-center py-8 text-[11px] text-[var(--color-text-secondary)]">
-                加载数据中...
-              </div>
-            )}
-            {config.selected_modules.map(id => {
-              const Comp = MODULE_MAP[id];
-              if (!Comp) return null;
-              return <Comp key={id} {...dataProps} />;
-            })}
-            {config.selected_modules.length === 0 && (
-              <div className="text-center py-8 text-[11px] text-[var(--color-text-secondary)]">
-                请在设置中选择显示模块
-              </div>
-            )}
-          </div>
-
+          <TimePeriodSelector />
+          {error && <ErrorToast message={error} onDismiss={() => setError(null)} />}
           {showSettings && <SettingsPanel />}
+          <WidgetBody />
         </div>
       </div>
     </WidgetErrorBoundary>

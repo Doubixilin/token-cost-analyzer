@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useStatsStore } from "../stores/useStatsStore";
 import { getSessionList, getSessionDetail } from "../api/tauriCommands";
 import type { SessionSummary, TokenRecord } from "../types";
@@ -7,26 +7,28 @@ import { formatTokens } from "../utils/formatter";
 
 export default function Sessions() {
   const filters = useStatsStore((s) => s.filters);
-  const mountedRef = useRef(true);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [detail, setDetail] = useState<TokenRecord[]>([]);
   const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const pageSize = 20;
 
-  const loadSessions = useCallback(async () => {
+  const loadSessions = useCallback(async (cancelled: { current: boolean }) => {
     try {
       const data = await getSessionList(filters, pageSize, page * pageSize);
-      if (!mountedRef.current) return;
+      if (cancelled.current) return;
       setSessions(data);
+      setHasMore(data.length >= pageSize);
     } catch (e) {
       console.error(e);
     }
   }, [filters, page]);
 
   useEffect(() => {
-    loadSessions();
-    return () => { mountedRef.current = false; };
+    const cancelled = { current: false };
+    loadSessions(cancelled);
+    return () => { cancelled.current = true; };
   }, [loadSessions]);
 
   const loadDetail = async (sessionId: string) => {
@@ -115,7 +117,7 @@ export default function Sessions() {
           <span className="text-xs text-[var(--color-text-secondary)]">第 {page + 1} 页</span>
           <button
             onClick={() => setPage((p) => p + 1)}
-            disabled={sessions.length < pageSize}
+            disabled={!hasMore}
             className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50"
           >
             下一页

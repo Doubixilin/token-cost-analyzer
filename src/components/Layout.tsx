@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
 import { refreshData, getFilterOptions, toggleWidget } from "../api/tauriCommands";
-import { listen } from "@tauri-apps/api/event";
 import { useState, useEffect } from "react";
 
 const navItems = [
@@ -31,14 +30,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => setSyncMessage(""), timeoutMs);
     return () => clearTimeout(timer);
   }, [syncMessage]);
-
-  // 监听托盘的小组件切换事件
-  useEffect(() => {
-    const unlisten = listen("toggle_widget", () => {
-      toggleWidget().catch(console.error);
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, []);
 
   const handleRefresh = async () => {
     setSyncing(true);

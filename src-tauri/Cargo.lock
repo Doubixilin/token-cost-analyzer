@@ -4099,8 +4099,8 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tauri-plugin-window-state",
- "thiserror 1.0.69",
  "toml 0.8.2",
+ "url",
  "walkdir",
  "windows-sys 0.59.0",
 ]

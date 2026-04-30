@@ -86,6 +86,8 @@ export interface FilterParams {
   agent_types: string[] | null;
 }
 
+export type TimePeriod = "today" | "7d" | "30d" | "all";
+
 export interface WidgetConfig {
   opacity: number;
   locked: boolean;
@@ -98,4 +100,5 @@ export interface WidgetConfig {
   y: number | null;
   theme: "light" | "dark" | "auto";
   refresh_interval_sec: number;
+  time_period: TimePeriod;
 }

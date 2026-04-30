@@ -224,18 +224,21 @@ pub fn get_heatmap_data(conn: &Connection, filters: &FilterParams, year: i32) ->
         .ok_or_else(|| rusqlite::Error::InvalidParameterName("invalid end time".to_string()))?
         .and_utc().timestamp() as f64;
     
+    let mut all_params = params;
     if where_clause.is_empty() {
-        where_clause = format!("WHERE timestamp >= {} AND timestamp < {}", start_ts, end_ts);
+        where_clause = "WHERE timestamp >= ? AND timestamp < ?".to_string();
     } else {
-        where_clause = format!("{} AND timestamp >= {} AND timestamp < {}", where_clause, start_ts, end_ts);
+        where_clause = format!("{} AND timestamp >= ? AND timestamp < ?", where_clause);
     }
+    all_params.push(start_ts.into());
+    all_params.push(end_ts.into());
 
     let sql = format!(
         "SELECT strftime('%Y-%m-%d', datetime(timestamp, 'unixepoch')), SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens) FROM token_records {} GROUP BY strftime('%Y-%m-%d', datetime(timestamp, 'unixepoch')) ORDER BY 1",
         where_clause
     );
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+    let rows = stmt.query_map(rusqlite::params_from_iter(all_params.iter()), |row| {
         Ok(HeatmapPoint {
             date: row.get(0)?,
             value: row.get::<_, Option<i64>>(1)?.unwrap_or(0),

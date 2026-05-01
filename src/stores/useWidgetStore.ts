@@ -45,9 +45,9 @@ interface WidgetState {
   saveConfig: () => Promise<void>;
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-export const useWidgetStore = create<WidgetState>((set, get) => ({
+export const useWidgetStore = create<WidgetState>((set, get) => {
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  return {
   config: DEFAULT_CONFIG,
   overview: null,
   trendData: [],
@@ -91,4 +91,5 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       console.error("保存小组件配置失败:", e);
     }
   },
-}));
+  };
+});

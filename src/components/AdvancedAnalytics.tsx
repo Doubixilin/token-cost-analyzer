@@ -14,6 +14,13 @@ import {
 import { formatTokens } from "../utils/formatter";
 import { getChartColors } from "../utils/chartColors";
 
+// Extracted to module level to avoid React re-mounting on every parent render
+const ChartCard = ({ option, height = 300, ariaLabel }: { option: any; height?: number; ariaLabel: string }) => (
+  <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label={ariaLabel}>
+    <ReactECharts option={option} style={{ height }} lazyUpdate={true} echarts={echarts} />
+  </div>
+);
+
 export default function AdvancedAnalytics() {
   const filters = useStatsStore((s) => s.filters);
   const refreshVersion = useStatsStore((s) => s.refreshVersion);
@@ -241,12 +248,6 @@ export default function AdvancedAnalytics() {
       },
     ],
   }), [projectTop, cc.textSecondary]);
-
-  const ChartCard = ({ option, height = 300, ariaLabel }: { option: any; height?: number; ariaLabel: string }) => (
-    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label={ariaLabel}>
-      <ReactECharts option={option} style={{ height }} lazyUpdate={true} echarts={echarts} />
-    </div>
-  );
 
   return (
     <div className="space-y-6">

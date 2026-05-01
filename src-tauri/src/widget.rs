@@ -62,7 +62,12 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
     }
     eprintln!("[Widget] Creating widget window...");
     let config = load_config_from_disk(app);
-    let (w, h) = (config.width, config.height);
+    // Clamp size to prevent corrupted/full-screen dimensions from being used
+    let default_w = 360.0;
+    let default_h = 480.0;
+    let w = if config.width > 50.0 && config.width <= 800.0 { config.width } else { default_w };
+    let h = if config.height > 50.0 && config.height <= 1000.0 { config.height } else { default_h };
+    eprintln!("[Widget] Size: {}x{} (raw config: {}x{})", w, h, config.width, config.height);
 
     // In dev mode, use the devUrl directly to avoid Tauri's asset protocol
     // falling back to index.html for non-root HTML paths.
@@ -84,7 +89,6 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
         .min_inner_size(280.0, 200.0)
         .resizable(true)
         .decorations(false)
-        .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .shadow(false)
@@ -112,11 +116,17 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
         });
     }
 
-    let result = builder
-        .build()
-        .map_err(|e| format!("创建小组件窗口失败: {}", e));
+    let widget_win = match builder.build() {
+        Ok(win) => win,
+        Err(e) => {
+            WIDGET_CREATING.store(false, Ordering::SeqCst);
+            return Err(format!("创建小组件窗口失败: {}", e));
+        }
+    };
     WIDGET_CREATING.store(false, Ordering::SeqCst);
-    result?;
+
+    // Explicitly set size after build to prevent DWM from expanding the window
+    let _ = widget_win.set_size(tauri::LogicalSize::new(w, h));
 
     eprintln!("[Widget] Window built successfully, setting up listeners...");
 
@@ -134,8 +144,8 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
                     let sv = save_version.clone();
                     let x = pos.x as f64;
                     let y = pos.y as f64;
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         if sv.load(Ordering::SeqCst) == v {
                             let mut config = load_config_from_disk(&app);
                             config.x = Some(x);
@@ -150,15 +160,18 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
                     let sv = save_version.clone();
                     let w = size.width as f64;
                     let h = size.height as f64;
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(500));
-                        if sv.load(Ordering::SeqCst) == v {
-                            let mut config = load_config_from_disk(&app);
-                            config.width = w;
-                            config.height = h;
-                            let _ = save_widget_config_internal(&app, &config);
-                        }
-                    });
+                    // Only save if within reasonable bounds (prevent corrupted full-screen dimensions)
+                    if w > 50.0 && w <= 800.0 && h > 50.0 && h <= 1000.0 {
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            if sv.load(Ordering::SeqCst) == v {
+                                let mut config = load_config_from_disk(&app);
+                                config.width = w;
+                                config.height = h;
+                                let _ = save_widget_config_internal(&app, &config);
+                            }
+                        });
+                    }
                 }
                 _ => {}
             }
@@ -216,12 +229,28 @@ pub fn load_widget_config(app: tauri::AppHandle) -> Result<WidgetConfig, String>
 fn load_config_from_disk(app: &tauri::AppHandle) -> WidgetConfig {
     match config_path(app) {
         Ok(path) if path.exists() => {
-            fs::read_to_string(&path)
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default()
+            match fs::read_to_string(&path) {
+                Ok(content) => match serde_json::from_str(&content) {
+                    Ok(config) => config,
+                    Err(e) => {
+                        eprintln!("[Widget] 配置文件 JSON 解析失败: {}, 使用默认配置", e);
+                        WidgetConfig::default()
+                    }
+                },
+                Err(e) => {
+                    eprintln!("[Widget] 配置文件读取失败: {}, 使用默认配置", e);
+                    WidgetConfig::default()
+                }
+            }
         }
-        _ => WidgetConfig::default(),
+        Ok(_) => {
+            eprintln!("[Widget] 配置文件不存在，使用默认配置");
+            WidgetConfig::default()
+        }
+        Err(e) => {
+            eprintln!("[Widget] 无法获取配置路径: {}, 使用默认配置", e);
+            WidgetConfig::default()
+        }
     }
 }
 
@@ -248,7 +277,7 @@ mod win_desktop {
             let mut class_name = [0u8; 256];
             let len = GetClassNameA(hwnd, class_name.as_mut_ptr(), class_name.len() as i32);
             if len == 0 { return 1; }
-            let name = CStr::from_bytes_until_nul(&class_name[..len as usize])
+            let name = CStr::from_bytes_until_nul(&class_name)
                 .unwrap_or_default()
                 .to_str()
                 .unwrap_or_default();

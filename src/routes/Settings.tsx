@@ -38,6 +38,7 @@ export default function Settings() {
     time_period: "7d",
   });
   const [widgetSaved, setWidgetSaved] = useState(false);
+  const [widgetError, setWidgetError] = useState<string | null>(null);
 
   useEffect(() => {
     loadWidgetConfig()
@@ -53,8 +54,10 @@ export default function Settings() {
     try {
       await saveWidgetConfig(widgetConfig);
       setWidgetSaved(true);
+      setWidgetError(null);
       setTimeout(() => setWidgetSaved(false), 3000);
     } catch (e) {
+      setWidgetError("保存配置失败，请重试");
       console.error(e);
     }
   };
@@ -137,7 +140,7 @@ export default function Settings() {
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold">模型单价配置</h3>
-          <span className="text-xs text-[var(--color-text-secondary)]">单位: ¥ / 1M tokens</span>
+          <span className="text-xs text-[var(--color-text-secondary)]">单位: $ / 1M tokens</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -462,6 +465,7 @@ export default function Settings() {
               <button
                 onClick={async () => {
                   try {
+                    setWidgetError(null);
                     if (widgetConfig.pinned_to_desktop) {
                       await unpinWidgetFromDesktop();
                       updateWidget({ pinned_to_desktop: false });
@@ -469,7 +473,9 @@ export default function Settings() {
                       await embedWidgetToDesktop();
                       updateWidget({ pinned_to_desktop: true });
                     }
-                  } catch (e) {
+                  } catch (e: any) {
+                    const msg = e?.message || String(e) || "桌面钉入操作失败";
+                    setWidgetError(msg);
                     console.error("桌面钉入操作失败:", e);
                   }
                 }}
@@ -555,6 +561,7 @@ export default function Settings() {
               重置位置
             </button>
             {widgetSaved && <span className="text-sm text-[var(--color-success)]">保存成功！</span>}
+            {widgetError && <span className="text-sm text-[var(--color-danger)]">{widgetError}</span>}
           </div>
         </div>
 

@@ -88,6 +88,17 @@ export interface FilterParams {
 
 export type TimePeriod = "today" | "7d" | "30d" | "all";
 
+export interface FilterOptions {
+  sources: string[];
+  models: string[];
+  projects: string[];
+}
+
+export interface SessionListResult {
+  items: SessionSummary[];
+  has_more: boolean;
+}
+
 export interface WidgetConfig {
   opacity: number;
   locked: boolean;

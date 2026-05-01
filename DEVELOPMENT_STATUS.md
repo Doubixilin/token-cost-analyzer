@@ -1,6 +1,6 @@
 # Token Cost Analyzer - 开发进度文档
 
-> 最后更新: 2026-04-29
+> 最后更新: 2026-05-01
 > 当前阶段: v0.3.0 桌面悬浮小组件 + 系统托盘
 
 ---
@@ -81,6 +81,33 @@
 - [x] **自动/手动刷新** — 可配置间隔（1/5/15/30 分钟），手动刷新按钮带旋转动画
 - [x] **ErrorBoundary** — 小组件专用错误边界，出错时显示重试按钮
 
+### Phase 9: 全面代码审查与深度修复 ✅ (2026-05-01)
+- [x] **全面代码审查报告** — `CODE_REVIEW_REPORT.md`，排查 42 项问题
+- [x] **Widget 拖拽修复** — `data-tauri-drag-region` + `startDragging()` 双保险，左侧 pointer-events-none 穿透触发原生拖拽
+- [x] **Widget 线程炸弹修复** — `std::thread::spawn` → `tauri::async_runtime::spawn` + `tokio::time::sleep`
+- [x] **Windows 桌面钉入修复** — `CStr::from_bytes_until_nul(&class_name[..len])` → `&class_name`，`WorkerW` 匹配永久失效 bug
+- [x] **WIDGET_CREATING 错误路径** — `builder.build()` 失败时正确重置原子标志
+- [x] **Widget ErrorToast 定时器** — `useRef` 保存 `onDismiss`，避免父组件渲染导致 4 秒定时器无限重置
+- [x] **Widget colorCache 泄漏** — 模块级 `Map` → `useColorMap` Hook，`useMemo` 生命周期管理
+- [x] **Settings 钉入失败提示** — 新增 `widgetError` 状态，失败时在 UI 显示具体错误
+- [x] **Layout 性能灾难** — 解构整个 Zustand store → 5 个细粒度 selector，消除全应用不必要的重渲染
+- [x] **Sessions 分页/竞态** — 筛选变化自动 `setPage(0)`；`loadDetail` 用 `latestSessionId` ref 丢弃过期响应
+- [x] **ChartCard 反模式** — 从 `AdvancedAnalytics` 内部提取到模块顶层，避免 ECharts 反复重新初始化
+- [x] **ErrorBoundary 覆盖** — 从仅包裹 `<Routes>` 改为包裹整个 `<Layout>`
+- [x] **Dashboard 下载修复** — `URL.revokeObjectURL` 延迟 5 秒释放，避免浏览器下载前链接被撤销
+- [x] **FilterBar Project 筛选** — 新增 `availableProjects` 筛选按钮栏
+- [x] **useWidgetStore saveTimer** — 模块级变量 → `create()` 闭包内部变量，生命周期与 store 实例绑定
+- [x] **refresh_data 互斥** — `AtomicBool` + `SyncGuard` Drop guard，防止连续点击重复解析
+- [x] **export_data 优化** — `String::clone()` → `.as_str()` 传引用，减少 CSV 导出时的堆分配
+- [x] **Tray 优雅退出** — `std::process::exit(0)` → `app.exit(0)`，触发正常关闭流程
+- [x] **get_filter_options 结构体** — 元组 `(Vec, Vec, Vec)` → `FilterOptions` 自描述结构体
+- [x] **get_session_list hasMore** — 后端查询 `limit + 1`，返回 `SessionListResult { items, has_more }`，彻底消除最后一页误判
+- [x] **货币统一** — `formatCost` / Dashboard / Sessions / Settings 全部统一为 `$`（与数据库 USD 一致）
+- [x] **mtime 精度** — `f64` → `i64` 秒级 Unix 时间戳，消除浮点数相等比较风险
+- [x] **清理死依赖** — `npm uninstall docx`
+- [x] **版本号同步** — `package.json` / `tauri.conf.json` / `Cargo.toml` 统一为 `0.3.0`
+- [x] **lang 统一** — `index.html` `en` → `zh-CN`
+
 ---
 
 ## 已知问题与修复状态
@@ -92,6 +119,13 @@
 | 筛选器点击无反应 | 🔴 高 | ✅ 已修复 | mountedRef cleanup bug |
 | 数据不自动更新 | 🔴 高 | ✅ 已修复 | 添加 refreshVersion 信号 |
 | 无增量同步 | 🟡 中 | ✅ 已修复 | 基于文件 mtime 增量解析 |
+| Widget 拖拽失效 | 🔴 高 | ✅ 已修复 | `data-tauri-drag-region` + `startDragging()` 双保险 |
+| Windows 桌面钉入失效 | 🔴 高 | ✅ 已修复 | `CStr::from_bytes_until_nul` 切片不含 `\0` |
+| Widget 线程炸弹 | 🔴 高 | ✅ 已修复 | `std::thread::spawn` → `tokio::async_runtime::spawn` |
+| ErrorToast 永不消失 | 🔴 高 | ✅ 已修复 | `useRef` 稳定 `onDismiss` 引用 |
+| colorCache 内存泄漏 | 🔴 高 | ✅ 已修复 | 模块级 `Map` → `useColorMap` Hook |
+| Layout 全应用重渲染 | 🔴 高 | ✅ 已修复 | Zustand 细粒度 selector |
+| 货币符号混淆 | 🔴 高 | ✅ 已修复 | 统一为 `$`（USD） |
 | ECharts 全量导入 | 🟢 低 | ✅ 已修复 | 按需导入 tree-shaking |
 | 热力图中文 locale | 🟢 低 | ✅ 已修复 | 显式中文数组 |
 | 编译 warnings | 🟢 低 | ✅ 已修复 | 零警告 |

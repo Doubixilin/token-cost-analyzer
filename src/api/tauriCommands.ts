@@ -3,13 +3,14 @@ import type {
   OverviewStats,
   TrendPoint,
   DistributionItem,
-  SessionSummary,
   TokenRecord,
   TopNItem,
   HeatmapPoint,
   ModelPricing,
   FilterParams,
   WidgetConfig,
+  FilterOptions,
+  SessionListResult,
 } from "../types";
 
 export const getOverviewStats = (filters: FilterParams): Promise<OverviewStats> =>
@@ -21,7 +22,7 @@ export const getTrendData = (filters: FilterParams, granularity: string): Promis
 export const getDistribution = (filters: FilterParams, dimension: string): Promise<DistributionItem[]> =>
   invoke("get_distribution", { filters, dimension });
 
-export const getSessionList = (filters: FilterParams, limit: number, offset: number): Promise<SessionSummary[]> =>
+export const getSessionList = (filters: FilterParams, limit: number, offset: number): Promise<SessionListResult> =>
   invoke("get_session_list", { filters, limit, offset });
 
 export const getSessionDetail = (sessionId: string): Promise<TokenRecord[]> =>
@@ -33,7 +34,7 @@ export const getTopN = (filters: FilterParams, dimension: string, metric: string
 export const getHeatmapData = (filters: FilterParams, year: number): Promise<HeatmapPoint[]> =>
   invoke("get_heatmap_data", { filters, year });
 
-export const getFilterOptions = (): Promise<[string[], string[], string[]]> =>
+export const getFilterOptions = (): Promise<FilterOptions> =>
   invoke("get_filter_options");
 
 export const refreshData = (): Promise<number> =>

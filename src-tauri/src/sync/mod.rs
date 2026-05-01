@@ -5,10 +5,10 @@ use crate::models::TokenRecord;
 use crate::parsers::{parse_all_kimi_records, parse_all_claude_records};
 
 /// Read file sync state from database (modification times)
-pub fn get_file_sync_state(conn: &Connection) -> Result<HashMap<String, f64>, Box<dyn std::error::Error>> {
+pub fn get_file_sync_state(conn: &Connection) -> Result<HashMap<String, i64>, Box<dyn std::error::Error>> {
     let mut stmt = conn.prepare("SELECT file_path, last_modified FROM sync_state")?;
     let rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
     })?;
     let mut map = HashMap::new();
     for row in rows {
@@ -19,11 +19,11 @@ pub fn get_file_sync_state(conn: &Connection) -> Result<HashMap<String, f64>, Bo
 }
 
 /// Scan session directories and return file paths with modification times
-pub fn scan_session_files() -> Vec<(PathBuf, f64, &'static str)> {
+pub fn scan_session_files() -> Vec<(PathBuf, i64, &'static str)> {
     use walkdir::WalkDir;
     use std::path::Path;
 
-    let mut files: Vec<(PathBuf, f64, &'static str)> = vec![];
+    let mut files: Vec<(PathBuf, i64, &'static str)> = vec![];
 
     // Scan Kimi sessions
     if let Some(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok() {
@@ -34,7 +34,7 @@ pub fn scan_session_files() -> Vec<(PathBuf, f64, &'static str)> {
                     if let Ok(meta) = entry.metadata() {
                         if let Ok(modified) = meta.modified() {
                             let mtime = modified.duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default().as_secs_f64();
+                                .unwrap_or_default().as_secs() as i64;
                             files.push((entry.path().to_path_buf(), mtime, "kimi"));
                         }
                     }
@@ -51,7 +51,7 @@ pub fn scan_session_files() -> Vec<(PathBuf, f64, &'static str)> {
                 if let Ok(meta) = entry.metadata() {
                     if let Ok(modified) = meta.modified() {
                         let mtime = modified.duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default().as_secs_f64();
+                            .unwrap_or_default().as_secs() as i64;
                         files.push((entry.path().to_path_buf(), mtime, "claude"));
                     }
                 }
@@ -64,8 +64,8 @@ pub fn scan_session_files() -> Vec<(PathBuf, f64, &'static str)> {
 
 /// Parse only changed files (incremental sync)
 pub fn parse_changed_files(
-    files: &[(PathBuf, f64, &str)],
-    prev_state: &HashMap<String, f64>,
+    files: &[(PathBuf, i64, &str)],
+    prev_state: &HashMap<String, i64>,
     progress_cb: &mut dyn FnMut(&str, usize, usize),
 ) -> (Vec<TokenRecord>, Vec<String>) {
     let kimi_files: Vec<PathBuf> = files.iter()
@@ -111,7 +111,7 @@ pub fn insert_and_update_sync(
     conn: &mut Connection,
     records: &[TokenRecord],
     _changed_paths: &[String],
-    file_mtimes: &[(String, f64)],
+    file_mtimes: &[(String, i64)],
     current_paths: &[String],
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let tx = conn.transaction()?;

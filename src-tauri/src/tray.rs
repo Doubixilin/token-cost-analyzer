@@ -15,7 +15,13 @@ pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Erro
     let menu = Menu::with_items(app, &[&show_item, &toggle_widget, &separator, &quit_item])?;
 
     let _tray = TrayIconBuilder::new()
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(match app.default_window_icon() {
+            Some(icon) => icon.clone(),
+            None => {
+                eprintln!("[Tray] 无法获取默认窗口图标");
+                tauri::image::Image::new_owned(vec![0, 0, 0, 0], 1, 1)
+            }
+        })
         .tooltip("Token Cost Analyzer")
         .menu(&menu)
         .on_menu_event(move |app, event| match event.id.as_ref() {
@@ -31,7 +37,7 @@ pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Erro
                 }
             }
             "quit" => {
-                std::process::exit(0);
+                app.exit(0);
             }
             _ => {}
         })

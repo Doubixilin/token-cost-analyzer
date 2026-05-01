@@ -15,7 +15,7 @@ import StatCard from "../components/StatCard";
 import TrendChart from "../components/TrendChart";
 import FilterBar from "../components/FilterBar";
 
-import { formatNumber } from "../utils/formatter";
+import { formatNumber, formatCost } from "../utils/formatter";
 
 export default function Dashboard() {
   const filters = useStatsStore((s) => s.filters);
@@ -38,7 +38,7 @@ export default function Dashboard() {
     ]);
     setOverview(stats);
     setTrendData(trend);
-    setAvailableOptions(options[0], options[1], options[2]);
+    setAvailableOptions(options.sources, options.models, options.projects);
   }, [filters, setOverview, setTrendData, setAvailableOptions]);
 
   // Auto-sync on first mount (only once)
@@ -72,8 +72,10 @@ export default function Dashboard() {
       const a = document.createElement("a");
       a.href = url;
       a.download = `token_export_${new Date().toISOString().slice(0, 10)}.${format}`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e) {
       console.error("Export failed:", e);
     } finally {
@@ -121,7 +123,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="总成本"
-          value={`$${(overview?.total_cost || 0).toFixed(4)}`}
+          value={formatCost(overview?.total_cost || 0)}
           icon={DollarSign}
           color="#10b981"
         />

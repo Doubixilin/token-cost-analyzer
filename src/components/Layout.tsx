@@ -21,7 +21,11 @@ const navItems = [
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const { isSyncing, setSyncing, setLastSyncTime, setAvailableOptions, notifyRefresh } = useStatsStore();
+  const isSyncing = useStatsStore((s) => s.isSyncing);
+  const setSyncing = useStatsStore((s) => s.setSyncing);
+  const setLastSyncTime = useStatsStore((s) => s.setLastSyncTime);
+  const setAvailableOptions = useStatsStore((s) => s.setAvailableOptions);
+  const notifyRefresh = useStatsStore((s) => s.notifyRefresh);
   const [syncMessage, setSyncMessage] = useState("");
 
   useEffect(() => {
@@ -38,8 +42,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       const count = await refreshData();
       setSyncMessage(`同步完成，共 ${count} 条记录`);
       setLastSyncTime(new Date());
-      const [sources, models, projects] = await getFilterOptions();
-      setAvailableOptions(sources, models, projects);
+      const opts = await getFilterOptions();
+      setAvailableOptions(opts.sources, opts.models, opts.projects);
       notifyRefresh();
     } catch (e) {
       setSyncMessage("同步失败: " + String(e));

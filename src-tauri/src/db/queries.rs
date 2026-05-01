@@ -141,7 +141,8 @@ pub fn get_distribution(conn: &Connection, filters: &FilterParams, dimension: &s
     rows.collect()
 }
 
-pub fn get_session_list(conn: &Connection, filters: &FilterParams, limit: i64, offset: i64) -> Result<Vec<SessionSummary>> {
+pub fn get_session_list(conn: &Connection, filters: &FilterParams, limit: i64, offset: i64) -> Result<SessionListResult> {
+    let query_limit = limit + 1; // fetch one extra to determine has_more
     let mut conditions = vec![];
     let mut params: Vec<rusqlite::types::Value> = vec![];
 
@@ -171,11 +172,19 @@ pub fn get_session_list(conn: &Connection, filters: &FilterParams, limit: i64, o
         "SELECT session_id, source, project_path, start_time, end_time, total_input, total_output, total_cache_read, total_cache_creation, total_cost, message_count, agent_count FROM session_summary {} ORDER BY start_time DESC LIMIT ? OFFSET ?",
         where_clause
     );
-    params.push(limit.into());
+    params.push(query_limit.into());
     params.push(offset.into());
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), row_to_session_summary)?;
-    rows.collect()
+    let mut items: Vec<SessionSummary> = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    let has_more = items.len() > limit as usize;
+    if has_more {
+        items.truncate(limit as usize);
+    }
+    Ok(SessionListResult { items, has_more })
 }
 
 pub fn get_top_n(conn: &Connection, filters: &FilterParams, dimension: &str, metric: &str, limit: i64) -> Result<Vec<TopNItem>> {
@@ -272,7 +281,7 @@ pub fn get_session_detail(conn: &Connection, session_id: &str) -> Result<Vec<Tok
     rows.collect()
 }
 
-pub fn get_filter_options(conn: &Connection) -> Result<(Vec<String>, Vec<String>, Vec<String>)> {
+pub fn get_filter_options(conn: &Connection) -> Result<FilterOptions> {
     let models: Vec<String> = conn.prepare("SELECT DISTINCT COALESCE(model, 'unknown') FROM token_records ORDER BY 1")?
         .query_map([], |row| row.get(0))?
         .collect::<Result<Vec<_>>>()?;
@@ -285,7 +294,7 @@ pub fn get_filter_options(conn: &Connection) -> Result<(Vec<String>, Vec<String>
         .query_map([], |row| row.get(0))?
         .collect::<Result<Vec<_>>>()?;
 
-    Ok((sources, models, projects))
+    Ok(FilterOptions { sources, models, projects })
 }
 
 pub fn get_model_pricing(conn: &Connection) -> Result<Vec<ModelPricing>> {

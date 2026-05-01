@@ -9,16 +9,16 @@ import Settings from "./routes/Settings";
 function App() {
   return (
     <HashRouter>
-      <Layout>
-        <ErrorBoundary>
+      <ErrorBoundary>
+        <Layout>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
-        </ErrorBoundary>
-      </Layout>
+        </Layout>
+      </ErrorBoundary>
     </HashRouter>
   );
 }

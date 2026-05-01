@@ -124,3 +124,16 @@ pub struct ScatterPoint {
     pub model: String,
     pub cost: f64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilterOptions {
+    pub sources: Vec<String>,
+    pub models: Vec<String>,
+    pub projects: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionListResult {
+    pub items: Vec<SessionSummary>,
+    pub has_more: bool,
+}

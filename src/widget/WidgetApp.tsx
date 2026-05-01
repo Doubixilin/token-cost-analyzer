@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, Component, type ReactNode, memo } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo, Component, type ReactNode, memo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { Activity, RefreshCw, Settings, Lock, Unlock, Pin, PinOff, X, AlertCircle, GripVertical } from "lucide-react";
@@ -10,12 +10,19 @@ import dayjs from "dayjs";
 
 // --- Color palette ---
 const PALETTE = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#06b6d4", "#f97316", "#84cc16"];
-const colorCache = new Map<string, string>();
-let colorIdx = 0;
-function getColor(key: string): string {
-  let c = colorCache.get(key);
-  if (!c) { c = PALETTE[colorIdx % PALETTE.length]; colorCache.set(key, c); colorIdx++; }
-  return c;
+function useColorMap(keys: string[]): Map<string, string> {
+  return useMemo(() => {
+    const map = new Map<string, string>();
+    let idx = 0;
+    for (const key of keys) {
+      const lower = key.toLowerCase();
+      if (!map.has(lower)) {
+        map.set(lower, PALETTE[idx % PALETTE.length]);
+        idx++;
+      }
+    }
+    return map;
+  }, [keys]);
 }
 
 // --- Filter helpers ---
@@ -139,6 +146,7 @@ const TrendModule = memo(function TrendModule() {
 // --- Source Split Module ---
 const SourceSplitModule = memo(function SourceSplitModule() {
   const distribution = useWidgetStore(s => s.distribution);
+  const colorMap = useColorMap(distribution.map(d => d.name));
   if (distribution.length === 0) return <EmptyModule text="暂无工具分布数据" />;
   const total = distribution.reduce((s, d) => s + d.value, 0) || 1;
 
@@ -148,7 +156,7 @@ const SourceSplitModule = memo(function SourceSplitModule() {
       <div className="space-y-1.5">
         {distribution.map(d => (
           <div key={d.name} className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getColor(d.name.toLowerCase()) }} />
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorMap.get(d.name.toLowerCase()) }} />
             <span className="text-[11px] text-[var(--color-text)] flex-1 truncate">{d.name}</span>
             <span className="text-[11px] font-medium text-[var(--color-text)]">{((d.value / total) * 100).toFixed(1)}%</span>
           </div>
@@ -156,7 +164,7 @@ const SourceSplitModule = memo(function SourceSplitModule() {
       </div>
       <div className="flex h-1.5 rounded-full overflow-hidden mt-2 bg-[var(--color-border)]">
         {distribution.map(d => (
-          <div key={d.name} className="h-full transition-[width]" style={{ width: `${(d.value / total) * 100}%`, backgroundColor: getColor(d.name.toLowerCase()) }} />
+          <div key={d.name} className="h-full transition-[width]" style={{ width: `${(d.value / total) * 100}%`, backgroundColor: colorMap.get(d.name.toLowerCase()) }} />
         ))}
       </div>
     </div>
@@ -347,16 +355,15 @@ const WidgetHeader = memo(function WidgetHeader() {
   const isLoading = useWidgetStore(s => s.isLoading);
   const headerRef = useRef<HTMLDivElement>(null);
 
-  // Native mousedown listener for drag (more reliable than React synthetic events
-  // with startDragging). Inspired by Electron's -webkit-app-region pattern.
   useEffect(() => {
     const el = headerRef.current;
     if (!el) return;
     const onMouseDown = (e: MouseEvent) => {
-      // Don't start drag when clicking buttons
-      if ((e.target as HTMLElement).closest("button")) return;
+      if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
       if (e.button === 0 && !locked) {
-        getCurrentWindow().startDragging();
+        getCurrentWindow().startDragging().catch(err =>
+          console.error("[Widget] startDragging failed:", err)
+        );
       }
     };
     el.addEventListener("mousedown", onMouseDown);
@@ -384,14 +391,15 @@ const WidgetHeader = memo(function WidgetHeader() {
   return (
     <div
       ref={headerRef}
-      className="flex items-center justify-between px-3 py-2 select-none cursor-grab"
+      data-tauri-drag-region
+      className={`flex items-center justify-between px-3 py-2 select-none ${locked ? "cursor-default" : "cursor-grab"}`}
     >
       <div className="flex items-center gap-2 pointer-events-none">
         <Activity size={14} className="text-[var(--color-primary)]" />
         <span className="text-[12px] font-semibold text-[var(--color-text)]">Token 小组件</span>
         {!locked && <GripVertical size={12} className="text-[var(--color-text-secondary)] opacity-40" />}
       </div>
-      <div className="flex items-center gap-0.5">
+      <div data-no-drag className="flex items-center gap-0.5">
         <button onClick={bumpRefresh} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" aria-label="刷新数据">
           <RefreshCw size={13} className={`text-[var(--color-text-secondary)] ${isLoading ? "animate-spin" : ""}`} />
         </button>
@@ -417,10 +425,13 @@ const WidgetHeader = memo(function WidgetHeader() {
 
 // --- Error toast ---
 const ErrorToast = memo(function ErrorToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
   useEffect(() => {
-    const t = setTimeout(onDismiss, 4000);
+    const t = setTimeout(() => onDismissRef.current(), 4000);
     return () => clearTimeout(t);
-  }, [onDismiss]);
+  }, [message]);
   return (
     <div className="mx-2.5 mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/15 border border-red-500/20 text-[10px] text-red-400">
       <AlertCircle size={12} />

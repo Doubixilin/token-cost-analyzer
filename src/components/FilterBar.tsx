@@ -12,7 +12,12 @@ const timePresets = [
 ];
 
 export default function FilterBar() {
-  const { filters, availableSources, availableModels, setFilters, resetFilters } = useStatsStore();
+  const filters = useStatsStore((s) => s.filters);
+  const availableSources = useStatsStore((s) => s.availableSources);
+  const availableModels = useStatsStore((s) => s.availableModels);
+  const availableProjects = useStatsStore((s) => s.availableProjects);
+  const setFilters = useStatsStore((s) => s.setFilters);
+  const resetFilters = useStatsStore((s) => s.resetFilters);
 
   const applyTimePreset = (days: number | null) => {
     if (days === null) {
@@ -127,6 +132,29 @@ export default function FilterBar() {
                 }`}
               >
                 {model}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Project Filter */}
+      {availableProjects.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-[var(--color-text-secondary)] w-12">项目:</span>
+          <div className="flex gap-1 flex-wrap max-h-20 overflow-y-auto">
+            {availableProjects.map((project) => (
+              <button
+                key={project}
+                onClick={() => toggleFilter("projects", project)}
+                aria-pressed={filters.projects?.includes(project) || false}
+                className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                  filters.projects?.includes(project)
+                    ? "bg-[var(--color-primary)] text-white"
+                    : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600"
+                }`}
+              >
+                {project.split(/[\\/]/).pop() || project}
               </button>
             ))}
           </div>

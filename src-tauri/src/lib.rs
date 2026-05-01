@@ -5,6 +5,7 @@ pub mod sync;
 pub mod tray;
 pub mod widget;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -35,7 +36,7 @@ fn get_distribution(state: tauri::State<AppState>, filters: FilterParams, dimens
 }
 
 #[tauri::command]
-fn get_session_list(state: tauri::State<AppState>, filters: FilterParams, limit: i64, offset: i64) -> Result<Vec<SessionSummary>, String> {
+fn get_session_list(state: tauri::State<AppState>, filters: FilterParams, limit: i64, offset: i64) -> Result<SessionListResult, String> {
     let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
     queries::get_session_list(&conn, &filters, limit, offset).map_err(|e| e.to_string())
 }
@@ -59,13 +60,27 @@ fn get_heatmap_data(state: tauri::State<AppState>, filters: FilterParams, year: 
 }
 
 #[tauri::command]
-fn get_filter_options(state: tauri::State<AppState>) -> Result<(Vec<String>, Vec<String>, Vec<String>), String> {
+fn get_filter_options(state: tauri::State<AppState>) -> Result<FilterOptions, String> {
     let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
     queries::get_filter_options(&conn).map_err(|e| e.to_string())
 }
 
+static SYNCING: AtomicBool = AtomicBool::new(false);
+
+struct SyncGuard;
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        SYNCING.store(false, Ordering::SeqCst);
+    }
+}
+
 #[tauri::command]
 fn refresh_data(state: tauri::State<AppState>) -> Result<usize, String> {
+    if SYNCING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return Err("同步正在进行中，请稍后再试".to_string());
+    }
+    let _guard = SyncGuard;
+
     eprintln!("[sync] Step 1: Scanning session files...");
     let files = scan_session_files();
     eprintln!("[sync] Found {} session files", files.len());
@@ -90,7 +105,7 @@ fn refresh_data(state: tauri::State<AppState>) -> Result<usize, String> {
     let current_paths: Vec<String> = files.iter()
         .filter_map(|(p, _, _)| p.to_str().map(|s| s.to_string()))
         .collect();
-    let file_mtimes: Vec<(String, f64)> = files.iter()
+    let file_mtimes: Vec<(String, i64)> = files.iter()
         .filter(|(p, _, _)| changed_paths.contains(&p.to_str().unwrap_or("").to_string()))
         .map(|(p, m, _)| (p.to_str().unwrap_or("").to_string(), *m))
         .collect();
@@ -131,20 +146,26 @@ fn export_data(state: tauri::State<AppState>, filters: FilterParams, format: Str
             wtr.write_record(["source", "session_id", "agent_type", "agent_id", "timestamp", "model", "input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "project_path", "message_id", "cost_estimate"])
                 .map_err(|e| e.to_string())?;
             for r in &records {
+                let ts = r.timestamp.to_string();
+                let input = r.input_tokens.to_string();
+                let output = r.output_tokens.to_string();
+                let cache_read = r.cache_read_tokens.to_string();
+                let cache_create = r.cache_creation_tokens.to_string();
+                let cost = format!("{:.6}", r.cost_estimate);
                 wtr.write_record(&[
-                    r.source.clone(),
-                    r.session_id.clone(),
-                    r.agent_type.clone(),
-                    r.agent_id.clone().unwrap_or_default(),
-                    r.timestamp.to_string(),
-                    r.model.clone().unwrap_or_default(),
-                    r.input_tokens.to_string(),
-                    r.output_tokens.to_string(),
-                    r.cache_read_tokens.to_string(),
-                    r.cache_creation_tokens.to_string(),
-                    r.project_path.clone().unwrap_or_default(),
-                    r.message_id.clone().unwrap_or_default(),
-                    format!("{:.6}", r.cost_estimate),
+                    r.source.as_str(),
+                    r.session_id.as_str(),
+                    r.agent_type.as_str(),
+                    r.agent_id.as_deref().unwrap_or(""),
+                    ts.as_str(),
+                    r.model.as_deref().unwrap_or(""),
+                    input.as_str(),
+                    output.as_str(),
+                    cache_read.as_str(),
+                    cache_create.as_str(),
+                    r.project_path.as_deref().unwrap_or(""),
+                    r.message_id.as_deref().unwrap_or(""),
+                    cost.as_str(),
                 ])
                 .map_err(|e| e.to_string())?;
             }

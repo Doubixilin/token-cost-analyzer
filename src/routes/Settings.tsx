@@ -1,8 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
-import { getModelPricing, setModelPricing } from "../api/tauriCommands";
+import { getModelPricing, setModelPricing, getTrayDisplayMetric, setTrayDisplayMetric } from "../api/tauriCommands";
 import type { ModelPricing } from "../types";
 import { Moon, Sun } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
+
+const TRAY_METRIC_OPTIONS = [
+  { key: "total_tokens", label: "总计 Token" },
+  { key: "today_tokens", label: "今日 Token" },
+  { key: "total_cost", label: "总计成本" },
+  { key: "today_cost", label: "今日成本" },
+  { key: "total_requests", label: "总计请求数" },
+  { key: "today_requests", label: "今日请求数" },
+];
 
 type PriceField = "input_price" | "output_price" | "cache_read_price" | "cache_creation_price";
 
@@ -13,6 +22,8 @@ export default function Settings() {
   const { theme, setTheme } = useStatsStore();
   const [newModel, setNewModel] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [trayMetric, setTrayMetric] = useState("total_tokens");
+  const [traySaved, setTraySaved] = useState(false);
 
   const loadPricing = useCallback(async () => {
     try {
@@ -26,6 +37,10 @@ export default function Settings() {
   useEffect(() => {
     loadPricing();
   }, [loadPricing]);
+
+  useEffect(() => {
+    getTrayDisplayMetric().then(setTrayMetric).catch(console.error);
+  }, []);
 
   const updatePrice = (index: number, field: PriceField, value: string) => {
     const next = [...pricing];
@@ -71,6 +86,17 @@ export default function Settings() {
       setShowAddForm(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTrayMetricChange = async (metric: string) => {
+    try {
+      await setTrayDisplayMetric(metric);
+      setTrayMetric(metric);
+      setTraySaved(true);
+      setTimeout(() => setTraySaved(false), 3000);
     } catch (e) {
       console.error(e);
     }
@@ -185,6 +211,30 @@ export default function Settings() {
             </p>
           </div>
         )}
+      </div>
+
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold">菜单栏显示</h3>
+          <span className="text-xs text-[var(--color-text-secondary)]">macOS 菜单栏默认显示的数据维度</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {TRAY_METRIC_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => handleTrayMetricChange(opt.key)}
+              aria-pressed={trayMetric === opt.key}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                trayMetric === opt.key
+                  ? "bg-[var(--color-primary)] text-white"
+                  : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {traySaved && <span className="mt-3 block text-sm text-[var(--color-success)]">菜单栏显示已更新</span>}
       </div>
 
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">

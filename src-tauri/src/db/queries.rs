@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, Row};
+use rusqlite::{Connection, OptionalExtension, Result, Row};
 use crate::models::*;
 
 fn build_where_clause(filters: &FilterParams) -> (String, Vec<rusqlite::types::Value>) {
@@ -456,4 +456,14 @@ pub fn get_all_records_for_export(conn: &Connection, filters: &FilterParams) -> 
         })
     })?;
     rows.collect()
+}
+
+pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
+    conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| row.get(0))
+        .optional()
+}
+
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)", [key, value])?;
+    Ok(())
 }

@@ -160,6 +160,30 @@ fn get_sankey_data(state: tauri::State<AppState>, filters: FilterParams) -> Resu
     queries::get_sankey_data(&conn, &filters).map_err(|e| e.to_string())
 }
 
+const VALID_TRAY_METRICS: &[&str] = &[
+    "total_tokens", "today_tokens", "total_cost", "today_cost", "total_requests", "today_requests",
+];
+
+#[tauri::command]
+fn get_tray_display_metric(state: tauri::State<AppState>) -> Result<String, String> {
+    let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
+    Ok(queries::get_setting(&conn, "tray_display_metric")
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| "total_tokens".to_string()))
+}
+
+#[tauri::command]
+fn set_tray_display_metric(app: tauri::AppHandle, state: tauri::State<AppState>, metric: String) -> Result<(), String> {
+    if !VALID_TRAY_METRICS.contains(&metric.as_str()) {
+        return Err(format!("无效的指标: {}", metric));
+    }
+    let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
+    queries::set_setting(&conn, "tray_display_metric", &metric).map_err(|e| e.to_string())?;
+    drop(conn);
+    tray::update_tray_display(&app);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -205,6 +229,8 @@ pub fn run() {
             get_cumulative_cost,
             get_scatter_data,
             get_sankey_data,
+            get_tray_display_metric,
+            set_tray_display_metric,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

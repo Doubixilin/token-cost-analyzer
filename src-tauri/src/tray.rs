@@ -46,6 +46,19 @@ fn fmt_tokens(n: i64) -> String {
     }
 }
 
+/// Format the tray title based on the chosen metric
+fn format_tray_title(metric: &str, today: &OverviewStats, total: &OverviewStats) -> String {
+    match metric {
+        "total_tokens" => fmt_tokens(total.total_tokens),
+        "today_tokens" => fmt_tokens(today.total_tokens),
+        "total_cost" => format!("${:.2}", total.total_cost),
+        "today_cost" => format!("${:.2}", today.total_cost),
+        "total_requests" => total.total_requests.to_string(),
+        "today_requests" => today.total_requests.to_string(),
+        _ => fmt_tokens(total.total_tokens),
+    }
+}
+
 /// Query today's and all-time stats from the database
 fn query_stats(conn: &rusqlite::Connection) -> (OverviewStats, OverviewStats) {
     let empty = FilterParams {
@@ -156,24 +169,29 @@ fn build_menu(app: &AppHandle, today: &OverviewStats, total: &OverviewStats) -> 
 }
 
 /// Update tray title and menu with current stats
-fn update_tray_display(app: &AppHandle) {
+pub fn update_tray_display(app: &AppHandle) {
     let Some(tray) = app.tray_by_id("main-tray") else {
         return;
     };
 
     let state = app.state::<AppState>();
-    let stats = {
+    let (stats, metric) = {
         let guard = state.db.lock();
         match guard {
-            Ok(conn) => query_stats(&conn),
+            Ok(conn) => {
+                let stats = query_stats(&conn);
+                let metric = queries::get_setting(&conn, "tray_display_metric")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| "total_tokens".to_string());
+                (stats, metric)
+            }
             Err(_) => return,
         }
     };
 
-    let (today, _total) = &stats;
-
-    // Update menu bar title (shows next to the icon)
-    let _ = tray.set_title(Some(&format!("${:.2}", today.total_cost)));
+    // Update menu bar title based on user's chosen metric
+    let _ = tray.set_title(Some(&format_tray_title(&metric, &stats.0, &stats.1)));
 
     // Update context menu
     let menu = build_menu(app, &stats.0, &stats.1);
@@ -240,11 +258,15 @@ pub fn create_tray(app: &AppHandle) -> Result<TrayIcon, Box<dyn std::error::Erro
         })
         .build(app)?;
 
-    // Set initial title from today's stats
+    // Set initial title based on user's chosen metric
     let state = app.state::<AppState>();
     if let Ok(conn) = state.db.lock() {
-        let (today, _) = query_stats(&conn);
-        let _ = tray.set_title(Some(&format!("${:.2}", today.total_cost)));
+        let (today, total) = query_stats(&conn);
+        let metric = queries::get_setting(&conn, "tray_display_metric")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "total_tokens".to_string());
+        let _ = tray.set_title(Some(&format_tray_title(&metric, &today, &total)));
     }
 
     Ok(tray)
@@ -252,7 +274,7 @@ pub fn create_tray(app: &AppHandle) -> Result<TrayIcon, Box<dyn std::error::Erro
 
 /// Spawn a background task that updates the tray every 60 seconds
 pub fn spawn_tray_updater(app: AppHandle) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
         loop {
             interval.tick().await;

@@ -61,3 +61,9 @@ export const getScatterData = (filters: FilterParams, limit: number): Promise<{ 
 
 export const getSankeyData = (filters: FilterParams): Promise<[string, string, number][]> =>
   invoke("get_sankey_data", { filters });
+
+export const getTrayDisplayMetric = (): Promise<string> =>
+  invoke("get_tray_display_metric");
+
+export const setTrayDisplayMetric = (metric: string): Promise<void> =>
+  invoke("set_tray_display_metric", { metric });

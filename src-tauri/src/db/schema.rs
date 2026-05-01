@@ -57,6 +57,11 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             last_scan_time REAL,
             last_record_count INTEGER
         );
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         "#,
     )?;
 
@@ -83,6 +88,12 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             [],
         )?;
     }
+
+    // Default tray display metric
+    conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('tray_display_metric', 'total_tokens')",
+        [],
+    )?;
 
     Ok(())
 }

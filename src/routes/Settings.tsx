@@ -22,7 +22,7 @@ export default function Settings() {
   const { theme, setTheme } = useStatsStore();
   const [newModel, setNewModel] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
-  const [trayMetric, setTrayMetric] = useState("total_tokens");
+  const [trayMetric, setTrayMetric] = useState("today_tokens");
   const [traySaved, setTraySaved] = useState(false);
 
   const loadPricing = useCallback(async () => {

@@ -169,7 +169,7 @@ fn get_tray_display_metric(state: tauri::State<AppState>) -> Result<String, Stri
     let conn = state.db.lock().map_err(|e| format!("数据库锁中毒: {}", e))?;
     Ok(queries::get_setting(&conn, "tray_display_metric")
         .map_err(|e| e.to_string())?
-        .unwrap_or_else(|| "total_tokens".to_string()))
+        .unwrap_or_else(|| "today_tokens".to_string()))
 }
 
 #[tauri::command]

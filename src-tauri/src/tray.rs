@@ -8,23 +8,26 @@ use crate::db::queries;
 use crate::models::{FilterParams, OverviewStats};
 use crate::AppState;
 
+/// Convert a naive local datetime to Unix timestamp, falling back to UTC
+/// if the local time is ambiguous (DST transition) or nonexistent.
+fn naive_local_to_timestamp(naive: chrono::NaiveDateTime) -> f64 {
+    use chrono::LocalResult;
+    match naive.and_local_timezone(chrono::Local) {
+        LocalResult::Single(dt) => dt.timestamp() as f64,
+        LocalResult::Ambiguous(earliest, _) => earliest.timestamp() as f64,
+        LocalResult::None => {
+            // Fallback: treat as UTC during DST gap (e.g. spring-forward)
+            naive.and_utc().timestamp() as f64
+        }
+    }
+}
+
 /// Build a FilterParams for "today" (start of day to end of day)
 fn today_filters() -> FilterParams {
     let now = chrono::Local::now();
-    let today_start = now
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_local_timezone(chrono::Local)
-        .unwrap()
-        .timestamp() as f64;
-    let today_end = now
-        .date_naive()
-        .and_hms_opt(23, 59, 59)
-        .unwrap()
-        .and_local_timezone(chrono::Local)
-        .unwrap()
-        .timestamp() as f64;
+    let date = now.date_naive();
+    let today_start = naive_local_to_timestamp(date.and_hms_opt(0, 0, 0).unwrap());
+    let today_end = naive_local_to_timestamp(date.and_hms_opt(23, 59, 59).unwrap());
     FilterParams {
         start_time: Some(today_start),
         end_time: Some(today_end),
@@ -183,7 +186,7 @@ pub fn update_tray_display(app: &AppHandle) {
                 let metric = queries::get_setting(&conn, "tray_display_metric")
                     .ok()
                     .flatten()
-                    .unwrap_or_else(|| "total_tokens".to_string());
+                    .unwrap_or_else(|| "today_tokens".to_string());
                 (stats, metric)
             }
             Err(_) => return,
@@ -224,11 +227,27 @@ pub fn create_tray(app: &AppHandle) -> Result<TrayIcon, Box<dyn std::error::Erro
             "refresh" => {
                 let app = app.clone();
                 std::thread::spawn(move || {
+                    // Parse files outside the lock (expensive I/O)
+                    let parsed = match crate::sync::parse_all_records() {
+                        Ok(records) => records,
+                        Err(e) => {
+                            eprintln!("[tray] parse failed: {}", e);
+                            return;
+                        }
+                    };
                     let state = app.state::<AppState>();
                     let Ok(mut conn) = state.db.lock() else {
+                        eprintln!("[tray] db lock poisoned");
                         return;
                     };
-                    let _ = crate::sync::recalc_costs(&mut conn);
+                    if let Err(e) = crate::sync::insert_parsed_records(&mut conn, &parsed) {
+                        eprintln!("[tray] insert failed: {}", e);
+                        return;
+                    }
+                    if let Err(e) = crate::sync::recalc_costs(&mut conn) {
+                        eprintln!("[tray] recalc failed: {}", e);
+                        return;
+                    }
                     drop(conn);
                     update_tray_display(&app);
                 });
@@ -262,10 +281,15 @@ pub fn create_tray(app: &AppHandle) -> Result<TrayIcon, Box<dyn std::error::Erro
     let state = app.state::<AppState>();
     if let Ok(conn) = state.db.lock() {
         let (today, total) = query_stats(&conn);
-        let metric = queries::get_setting(&conn, "tray_display_metric")
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| "total_tokens".to_string());
+        let metric = match queries::get_setting(&conn, "tray_display_metric").ok().flatten() {
+            // Migrate old default (total_tokens) to new default (today_tokens)
+            Some(ref m) if m == "total_tokens" => {
+                let _ = queries::set_setting(&conn, "tray_display_metric", "today_tokens");
+                "today_tokens".to_string()
+            }
+            Some(m) => m,
+            None => "today_tokens".to_string(),
+        };
         let _ = tray.set_title(Some(&format_tray_title(&metric, &today, &total)));
     }
 

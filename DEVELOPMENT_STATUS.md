@@ -82,7 +82,7 @@
 - [x] **ErrorBoundary** — 小组件专用错误边界，出错时显示重试按钮
 
 ### Phase 9: 全面代码审查与深度修复 ✅ (2026-05-01)
-- [x] **全面代码审查报告** — `CODE_REVIEW_REPORT.md`，排查 42 项问题
+- [x] **全面代码审查报告** — `CODE_REVIEW_REPORT.md` / `CODE_REVIEW_REPORT_V2.md`，排查 42+ 项问题
 - [x] **Widget 拖拽修复** — `data-tauri-drag-region` + `startDragging()` 双保险，左侧 pointer-events-none 穿透触发原生拖拽
 - [x] **Widget 线程炸弹修复** — `std::thread::spawn` → `tauri::async_runtime::spawn` + `tokio::time::sleep`
 - [x] **Windows 桌面钉入修复** — `CStr::from_bytes_until_nul(&class_name[..len])` → `&class_name`，`WorkerW` 匹配永久失效 bug
@@ -108,6 +108,21 @@
 - [x] **版本号同步** — `package.json` / `tauri.conf.json` / `Cargo.toml` 统一为 `0.3.0`
 - [x] **lang 统一** — `index.html` `en` → `zh-CN`
 
+### Phase 10: 第二轮代码审查修复 ✅ (2026-05-01)
+- [x] **`get_session_detail` 参数名不匹配** — 前端 `{ sessionId }` → `{ session_id: sessionId }`，修复 Tauri v2 serde 反序列化失败
+- [x] **`get_session_list` 全维度筛选** — 新增 `projects` / `models` / `agent_types` 筛选支持（models/agent_types 通过 `token_records` 子查询）
+- [x] **自定义模型默认定价** — `ensure_all_models_priced` 插入 0 价格 → 回退到 `"unknown"` 默认价格（2.0/8.0/0.2/2.0）
+- [x] **Settings 版本号同步** — `v0.1.0` → `v0.3.0`
+- [x] **Settings Zustand 全量订阅** — 解构整个 store → 细粒度 selector
+- [x] **Widget 锁定后原生拖拽** — `data-tauri-drag-region` 条件渲染，锁定后移除属性
+- [x] **ErrorToast memo 失效** — 父组件 `useCallback` 稳定 `onDismiss` 引用
+- [x] **Excel 导出 URL 过早回收** — 同步 `revokeObjectURL` → 5 秒延迟释放
+- [x] **`sync_state.last_modified` 类型统一** — schema `REAL` → `INTEGER`（与代码 `i64` 一致）
+- [x] **`changed_paths` 线性查找优化** — `Vec::contains` O(n·m) → `HashSet::contains` O(1)
+- [x] **Widget 默认位置硬编码宽度** — `1408.0` → 动态获取 `main_win.inner_size()`
+- [x] **Cargo.toml 元数据更新** — `description` / `authors` 改为实际项目信息
+- [x] **CSP 策略完整化** — 添加 `font-src 'self'; connect-src 'self';`
+
 ---
 
 ## 已知问题与修复状态
@@ -129,6 +144,15 @@
 | ECharts 全量导入 | 🟢 低 | ✅ 已修复 | 按需导入 tree-shaking |
 | 热力图中文 locale | 🟢 低 | ✅ 已修复 | 显式中文数组 |
 | 编译 warnings | 🟢 低 | ✅ 已修复 | 零警告 |
+| `get_session_detail` 参数名不匹配 | 🔴 高 | ✅ 已修复 | `sessionId` → `session_id` |
+| Sessions 筛选器不完整 | 🔴 高 | ✅ 已修复 | 新增 projects/models/agent_types 筛选 |
+| 自定义模型 $0.0000 | 🔴 高 | ✅ 已修复 | 回退到 unknown 默认价格 |
+| Settings 全量 store 订阅 | 🟡 中 | ✅ 已修复 | 细粒度 selector |
+| Widget 锁定后仍可拖拽 | 🟡 中 | ✅ 已修复 | 条件渲染 `data-tauri-drag-region` |
+| ErrorToast memo 失效 | 🟡 中 | ✅ 已修复 | `useCallback` 稳定引用 |
+| Excel URL 过早回收 | 🟡 中 | ✅ 已修复 | 5 秒延迟释放 |
+| `sync_state` schema 类型不一致 | 🟢 低 | ✅ 已修复 | `REAL` → `INTEGER` |
+| `changed_paths` 线性查找 | 🟢 低 | ✅ 已修复 | `HashSet` O(1) 优化 |
 
 ---
 

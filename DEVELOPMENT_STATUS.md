@@ -1,7 +1,7 @@
 # Token Cost Analyzer - 开发进度文档
 
-> 最后更新: 2026-04-29
-> 当前阶段: Phase 3 功能增强（暗黑模式 + 数据导出已完成）
+> 最后更新: 2026-05-02
+> 当前阶段: Phase 7 macOS 菜单栏功能（已完成）
 
 ---
 
@@ -65,6 +65,19 @@
 - [ ] 桑基图（Token 流向分析）
 - [ ] 测试覆盖（Rust + 前端）
 
+### Phase 7: macOS 菜单栏 ✅
+- [x] macOS 系统托盘图标（TrayIconBuilder，template 模式自动适配深/浅色）
+- [x] 菜单栏标题显示 Token 统计（默认今日 Token）
+- [x] 原生上下文菜单（今日统计 / 总计统计 / 刷新 / 打开主窗口 / 退出）
+- [x] 60 秒自动刷新托盘显示
+- [x] 可配置显示指标（总计/今日 × Token/成本/请求数，共 6 种）
+- [x] 菜单栏「刷新数据」改为完整数据同步（parse→insert→recalc）
+- [x] 跨天自动归零修复 — 启动时迁移旧默认值 total_tokens→today_tokens
+- [x] DST 边界安全 — naive_local_to_timestamp 处理 LocalResult 三种情况
+- [x] macOS 关闭按钮隐藏到托盘（on_window_event CloseRequested）
+- [x] macOS 构建脚本（MACOS_BUILD_V2.md）
+- [x] GitHub Release v0.2.0 DMG 分发文件已更新
+
 ---
 
 ## 已知问题与修复状态
@@ -88,6 +101,8 @@
 | 编译 warnings | 🟢 低 | ⏳ 待修复 | 剩余 dead_code 警告（ClaudeMessage 字段） |
 | 前端 chunk 体积较大 | 🟢 低 | ⏳ 待优化 | ECharts 全量导入约 1.4MB |
 | 热力图中文 locale | 🟢 低 | ⏳ 待修复 | ECharts 日历热力图的 nameMap |
+| 菜单栏跨天不刷新 | 🔴 高 | ✅ 已修复 | 默认 total_tokens→today_tokens + DB迁移 + DST安全 + 刷新完整同步 |
+| 菜单栏刷新不同步数据 | 🔴 高 | ✅ 已修复 | 仅 recalc_costs → parse_all+insert+recalc 完整流程 |
 
 ---
 
@@ -141,9 +156,11 @@ token-cost-analyzer/
 │   │   ├── parsers/              # 解析器
 │   │   │   ├── kimi.rs           # Kimi Code 解析（toml crate）
 │   │   │   └── claude.rs         # Claude Code 解析
-│   │   └── sync/mod.rs           # 同步引擎（批量 UPDATE 优化）
-│   ├── Cargo.toml
-│   └── tauri.conf.json           # CSP 已配置
+│   │   ├── sync/mod.rs           # 同步引擎（批量 UPDATE 优化）
+│   │   └── tray.rs               # macOS 系统托盘（菜单栏图标+标题+菜单+60s刷新）
+│   ├── Cargo.toml                # 含 tray-icon, macos-private-api, tokio
+│   └── tauri.conf.json           # CSP 已配置, macOSPrivateApi: true
+├── MACOS_BUILD_V2.md             # macOS 构建指南
 ├── DEVELOPMENT_STATUS.md         # 本文档
 └── MEMORY.md                     # 上下文记忆文件
 ```
@@ -176,13 +193,16 @@ token-cost-analyzer/
 ## 下一步计划
 
 ### 近期（本周）
-1. **增量同步实现**
+1. **macOS 菜单栏功能** ✅
+   - 系统托盘图标 + 标题 + 上下文菜单 ✅
+   - 60s 定时刷新 + 可配置显示指标 ✅
+   - 跨天数据归零修复 ✅
+   - 刷新数据完整同步 ✅
+   - GitHub Release DMG 分发 ✅
+
+2. **增量同步实现**
    - 启用 `sync_state` 表记录各文件 mtime
    - 仅解析变更文件，提升刷新速度
-
-2. **前端可访问性完善**
-   - 补充剩余 ARIA 标签
-   - 键盘导航优化
 
 ### 中期（两周内）
 3. **桑基图**

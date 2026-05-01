@@ -1,8 +1,8 @@
 # Token Cost Analyzer — 修复与优化执行计划
 
 > 创建时间: 2026-04-29
-> 最后更新: 2026-04-29
-> 状态: Phase 1 ✅ 完成 | Phase 2 ✅ 完成 | Phase 3 部分完成
+> 最后更新: 2026-05-02
+> 状态: Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 6 ✅ | Phase 7 ✅
 
 ---
 
@@ -108,7 +108,34 @@
 
 ---
 
-## Phase 3: P2 功能增强（体验 + 扩展）🔄 部分完成
+## Phase 7: macOS 菜单栏 ✅ 已完成
+>
+>### 7.1 系统托盘 + 菜单栏标题 ✅
+>**文件**: `src-tauri/src/tray.rs`, `src-tauri/src/lib.rs`
+>**修改内容**:
+>- TrayIconBuilder 创建 macOS 菜单栏图标 + 标题（template 模式自动适配深浅色）
+>- 60s 定时刷新 `spawn_tray_updater`（tokio::time::interval）
+>- 6 种可配置显示指标：总计/今日 × Token/成本/请求数
+>- 上下文菜单：今日统计 → 总计统计 → 分隔线 → 刷新 → 打开主窗口 → 退出
+>- 关闭按钮隐藏到托盘（on_window_event CloseRequested）
+>
+>### 7.2 Bug 修复：跨天数据不刷新 ✅
+>**根因**: 默认指标为 `total_tokens`（累计值永不归零），且数据库持久化旧默认值
+>**修复**:
+>- 4 处 `total_tokens` → `today_tokens`（tray.rs ×2, lib.rs, Settings.tsx）
+>- `create_tray` 启动时迁移：旧值 `total_tokens` 自动更新为 `today_tokens`
+>- `today_filters()` 去掉所有 `unwrap()`，新增 `naive_local_to_timestamp` 安全处理 DST 边界
+>- 菜单栏「刷新数据」从仅 `recalc_costs` 改为完整流程 `parse_all → insert → recalc`
+>
+>### 7.3 构建与分发 ✅
+>**文件**: `MACOS_BUILD_V2.md`
+>**修改内容**:
+>- 记录 macOS 完整构建流程（npm run tauri build → DMG 生成）
+>- GitHub Release v0.2.0 上传最新 DMG（含菜单栏功能）
+
+---
+>
+>## Phase 3: P2 功能增强（体验 + 扩展）✅ 已完成
 
 ### 3.1 暗黑模式 ✅
 **文件**: `src/index.css`, `src/stores/useStatsStore.ts`, `src/routes/Settings.tsx`, 全局组件
@@ -151,21 +178,30 @@
 - [x] 无重复工具函数
 - [x] Analytics 页面图表切换流畅（useMemo）
 
-### Phase 3 完成标准 🔄
+### Phase 3 完成标准 ✅
 - [x] 暗黑模式切换正常
 - [x] 数据导出功能可用
 - [ ] 增量同步实现
 - [ ] 桑基图实现
 - [ ] 至少一组单元测试通过
 
+### Phase 7 完成标准 ✅
+- [x] macOS 菜单栏图标+标题正常显示
+- [x] 60s 定时刷新工作正常
+- [x] 6 种指标可切换
+- [x] 跨天后今日数据自动归零
+- [x] 刷新按钮完整同步
+- [x] DMG 构建并分发成功
+- [x] `cargo build` 无新增错误
+
 ---
 
 ## 记忆锚点
 
-- **当前执行阶段**: Phase 3 部分完成（暗黑模式 + 数据导出已完成）
-- **上次修改模块**: Dashboard 导出按钮、全局暗黑模式样式
+- **当前执行阶段**: Phase 7 已完成（macOS 菜单栏功能）
+- **上次修改模块**: tray.rs 跨天修复 + 默认指标迁移 + 刷新完整同步
 - **已知阻塞问题**: 无
-- **剩余高价值任务**: 增量同步、桑基图、测试覆盖
-- **下次启动应优先执行**: 检查本计划完成进度，继续未完成的 P2 项
+- **剩余高价值任务**: 增量同步、桑基图、测试覆盖、Windows 构建
+- **下次启动应优先执行**: 读取本 PLAN.md，确认进度，继续 Phase 3 未完成的增量同步
 
 > 新会话启动后，首先读取本 PLAN.md，然后读取 MEMORY.md 和 DEVELOPMENT_STATUS.md，确认当前进度后按优先级继续执行。

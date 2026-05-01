@@ -391,7 +391,7 @@ const WidgetHeader = memo(function WidgetHeader() {
   return (
     <div
       ref={headerRef}
-      data-tauri-drag-region
+      {...(locked ? {} : { "data-tauri-drag-region": true })}
       className={`flex items-center justify-between px-3 py-2 select-none ${locked ? "cursor-default" : "cursor-grab"}`}
     >
       <div className="flex items-center gap-2 pointer-events-none">
@@ -511,6 +511,7 @@ export default function WidgetApp() {
   const setLoading = useWidgetStore(s => s.setLoading);
 
   const [error, setError] = useState<string | null>(null);
+  const handleDismissError = useCallback(() => setError(null), []);
 
   // Initialize config
   useEffect(() => { loadConfig(); }, [loadConfig]);
@@ -603,7 +604,7 @@ export default function WidgetApp() {
         <div className="widget-glass h-full flex flex-col overflow-hidden">
           <WidgetHeader />
           <TimePeriodSelector />
-          {error && <ErrorToast message={error} onDismiss={() => setError(null)} />}
+          {error && <ErrorToast message={error} onDismiss={handleDismissError} />}
           {showSettings && <SettingsPanel />}
           <WidgetBody />
         </div>

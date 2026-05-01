@@ -18,7 +18,8 @@ export default function Settings() {
   const [pricing, setPricing] = useState<ModelPricing[]>([]);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
-  const { theme, setTheme } = useStatsStore();
+  const theme = useStatsStore((s) => s.theme);
+  const setTheme = useStatsStore((s) => s.setTheme);
   const [newModel, setNewModel] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -568,7 +569,7 @@ export default function Settings() {
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
         <h3 className="text-base font-semibold mb-2">关于</h3>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Token Cost Analyzer v0.1.0
+          Token Cost Analyzer v0.3.0
         </p>
         <p className="text-sm text-[var(--color-text-secondary)] mt-1">
           支持 Kimi Code 与 Claude Code 的 Token 消耗统计与分析

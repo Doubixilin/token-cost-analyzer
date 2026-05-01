@@ -105,8 +105,9 @@ fn refresh_data(state: tauri::State<AppState>) -> Result<usize, String> {
     let current_paths: Vec<String> = files.iter()
         .filter_map(|(p, _, _)| p.to_str().map(|s| s.to_string()))
         .collect();
+    let changed_set: std::collections::HashSet<String> = changed_paths.iter().cloned().collect();
     let file_mtimes: Vec<(String, i64)> = files.iter()
-        .filter(|(p, _, _)| changed_paths.contains(&p.to_str().unwrap_or("").to_string()))
+        .filter(|(p, _, _)| changed_set.contains(p.to_str().unwrap_or("")))
         .map(|(p, m, _)| (p.to_str().unwrap_or("").to_string(), *m))
         .collect();
 

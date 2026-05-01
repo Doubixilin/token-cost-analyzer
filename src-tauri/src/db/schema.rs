@@ -54,7 +54,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
 
         CREATE TABLE IF NOT EXISTS sync_state (
             file_path TEXT PRIMARY KEY,
-            last_modified REAL NOT NULL,
+            last_modified INTEGER NOT NULL,
             record_count INTEGER DEFAULT 0
         );
         "#,
@@ -73,7 +73,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         conn.execute_batch(
             "CREATE TABLE sync_state (
                 file_path TEXT PRIMARY KEY,
-                last_modified REAL NOT NULL,
+                last_modified INTEGER NOT NULL,
                 record_count INTEGER DEFAULT 0
             );",
         )?;

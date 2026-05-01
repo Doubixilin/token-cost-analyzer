@@ -265,8 +265,9 @@ fn ensure_all_models_priced(conn: &mut Connection) -> Result<(), rusqlite::Error
         .collect::<Result<Vec<_>, rusqlite::Error>>()?;
 
     for model in models {
+        // Use unknown model defaults (2.0/8.0/0.2/2.0) instead of zero prices
         conn.execute(
-            "INSERT INTO model_pricing (model, input_price, output_price, cache_read_price, cache_creation_price, currency) VALUES (?1, 0, 0, 0, 0, 'USD')",
+            "INSERT INTO model_pricing (model, input_price, output_price, cache_read_price, cache_creation_price, currency) VALUES (?1, 2.0, 8.0, 0.2, 2.0, 'USD')",
             [&model],
         )?;
     }

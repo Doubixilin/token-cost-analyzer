@@ -161,6 +161,33 @@ pub fn get_session_list(conn: &Connection, filters: &FilterParams, limit: i64, o
             params.extend(sources.iter().map(|s| s.clone().into()));
         }
     }
+    if let Some(projects) = &filters.projects {
+        if !projects.is_empty() {
+            let placeholders: Vec<String> = projects.iter().map(|_| "?".to_string()).collect();
+            conditions.push(format!("project_path IN ({})", placeholders.join(", ")));
+            params.extend(projects.iter().map(|s| s.clone().into()));
+        }
+    }
+    if let Some(models) = &filters.models {
+        if !models.is_empty() {
+            let placeholders: Vec<String> = models.iter().map(|_| "?".to_string()).collect();
+            conditions.push(format!(
+                "session_id IN (SELECT DISTINCT session_id FROM token_records WHERE model IN ({}))",
+                placeholders.join(", ")
+            ));
+            params.extend(models.iter().map(|s| s.clone().into()));
+        }
+    }
+    if let Some(agent_types) = &filters.agent_types {
+        if !agent_types.is_empty() {
+            let placeholders: Vec<String> = agent_types.iter().map(|_| "?".to_string()).collect();
+            conditions.push(format!(
+                "session_id IN (SELECT DISTINCT session_id FROM token_records WHERE agent_type IN ({}))",
+                placeholders.join(", ")
+            ));
+            params.extend(agent_types.iter().map(|s| s.clone().into()));
+        }
+    }
 
     let where_clause = if conditions.is_empty() {
         "".to_string()

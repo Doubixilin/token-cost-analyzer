@@ -101,7 +101,11 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
         // Default: position to the right of the main window to avoid overlap
         if let Some(main_win) = app.get_webview_window("main") {
             if let Ok(pos) = main_win.outer_position() {
-                builder = builder.position(pos.x as f64 + 1408.0 + 20.0, pos.y as f64);
+                if let Ok(size) = main_win.inner_size() {
+                    builder = builder.position(pos.x as f64 + size.width as f64 + 20.0, pos.y as f64);
+                } else {
+                    builder = builder.position(pos.x as f64 + 1420.0, pos.y as f64);
+                }
             }
         }
     }

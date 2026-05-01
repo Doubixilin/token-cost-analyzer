@@ -26,7 +26,7 @@ export const getSessionList = (filters: FilterParams, limit: number, offset: num
   invoke("get_session_list", { filters, limit, offset });
 
 export const getSessionDetail = (sessionId: string): Promise<TokenRecord[]> =>
-  invoke("get_session_detail", { sessionId });
+  invoke("get_session_detail", { session_id: sessionId });
 
 export const getTopN = (filters: FilterParams, dimension: string, metric: string, limit: number): Promise<TopNItem[]> =>
   invoke("get_top_n", { filters, dimension, metric, limit });

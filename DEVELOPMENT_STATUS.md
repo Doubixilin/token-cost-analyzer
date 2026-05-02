@@ -1,13 +1,13 @@
 # Token Cost Analyzer - 开发进度文档
 
 > 最后更新: 2026-05-02
-> 当前阶段: v0.3.1 移除透明度功能 + 货币统一为 CNY
+> 当前阶段: v0.3.2 新增 Codex Token 统计支持
 
 ---
 
 ## 项目概述
 
-基于 Tauri + React + ECharts + SQLite 的本地 Token 消耗统计与分析桌面应用，同时支持 Kimi Code 和 Claude Code 的 Token 消耗记录读取、统计与可视化。
+基于 Tauri + React + ECharts + SQLite 的本地 Token 消耗统计与分析桌面应用，支持 Kimi Code、Claude Code 和 Codex 的 Token 消耗记录读取、统计与可视化。
 
 ---
 
@@ -23,6 +23,7 @@
 ### Phase 2: 数据引擎 ✅
 - [x] Kimi Code JSONL 解析器（wire.jsonl StatusUpdate）
 - [x] Claude Code JSONL 解析器（assistant usage）
+- [x] **Codex JSONL 解析器（event_msg token_count）** — 事件流状态机解析
 - [x] 目录递归扫描与批量导入
 - [x] 统一数据模型（TokenRecord）
 - [x] 会话汇总表自动计算

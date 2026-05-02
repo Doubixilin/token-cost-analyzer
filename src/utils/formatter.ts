@@ -18,8 +18,19 @@ export function formatCost(cost: number): string {
 export const SOURCE_LABELS: Record<string, string> = {
   kimi: "Kimi Code",
   claude: "Claude Code",
+  codex: "Codex",
+};
+
+export const SOURCE_STYLES: Record<string, string> = {
+  kimi: "bg-blue-100 text-blue-700",
+  claude: "bg-orange-100 text-orange-700",
+  codex: "bg-green-100 text-green-700",
 };
 
 export function getSourceLabel(source: string): string {
   return SOURCE_LABELS[source] || source;
+}
+
+export function getSourceStyle(source: string): string {
+  return SOURCE_STYLES[source] || "bg-gray-100 text-gray-700";
 }

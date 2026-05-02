@@ -2,7 +2,7 @@ use rusqlite::{Connection, Transaction};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use crate::models::TokenRecord;
-use crate::parsers::{parse_all_kimi_records, parse_all_claude_records};
+use crate::parsers::{parse_all_kimi_records, parse_all_claude_records, parse_all_codex_records, parse_selected_codex_files};
 
 /// Read file sync state from database (modification times)
 pub fn get_file_sync_state(conn: &Connection) -> Result<HashMap<String, i64>, Box<dyn std::error::Error>> {
@@ -57,6 +57,24 @@ pub fn scan_session_files() -> Vec<(PathBuf, i64, &'static str)> {
                 }
             }
         }
+
+        let codex_dir = Path::new(&home).join(".codex").join("sessions");
+        if codex_dir.exists() {
+            for entry in WalkDir::new(&codex_dir).max_depth(5).into_iter().filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if !path.is_file() { continue; }
+                if path.extension().and_then(|e| e.to_str()) != Some("jsonl") { continue; }
+                let fname = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+                if !fname.starts_with("rollout-") { continue; }
+                if let Ok(meta) = entry.metadata() {
+                    if let Ok(modified) = meta.modified() {
+                        let mtime = modified.duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default().as_secs() as i64;
+                        files.push((path.to_path_buf(), mtime, "codex"));
+                    }
+                }
+            }
+        }
     }
 
     files
@@ -82,7 +100,14 @@ pub fn parse_changed_files(
         .map(|(p, _, _)| p.clone())
         .collect();
 
-    let total = kimi_files.len() + claude_files.len();
+    let codex_files: Vec<PathBuf> = files.iter()
+        .filter(|(p, mtime, src)| {
+            *src == "codex" && prev_state.get(p.to_str().unwrap_or("")) != Some(mtime)
+        })
+        .map(|(p, _, _)| p.clone())
+        .collect();
+
+    let total = kimi_files.len() + claude_files.len() + codex_files.len();
     let mut all_records = Vec::new();
     let mut changed_paths: Vec<String> = Vec::new();
 
@@ -99,6 +124,14 @@ pub fn parse_changed_files(
         match parse_selected_claude_files(&claude_files, progress_cb) {
             Ok(records) => all_records.extend(records),
             Err(e) => eprintln!("[sync] Failed to parse Claude files: {}", e),
+        }
+    }
+
+    if !codex_files.is_empty() {
+        changed_paths.extend(codex_files.iter().filter_map(|p| p.to_str().map(|s| s.to_string())));
+        match parse_selected_codex_files(&codex_files, progress_cb) {
+            Ok(records) => all_records.extend(records),
+            Err(e) => eprintln!("[sync] Failed to parse Codex files: {}", e),
         }
     }
 
@@ -176,6 +209,10 @@ pub fn parse_all_records() -> Result<Vec<TokenRecord>, Box<dyn std::error::Error
     match parse_all_claude_records(&mut progress) {
         Ok(records) => all_records.extend(records),
         Err(e) => eprintln!("[sync] Failed to parse Claude records: {}", e),
+    }
+    match parse_all_codex_records(&mut progress) {
+        Ok(records) => all_records.extend(records),
+        Err(e) => eprintln!("[sync] Failed to parse Codex records: {}", e),
     }
 
     Ok(all_records)

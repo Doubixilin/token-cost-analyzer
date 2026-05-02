@@ -3,7 +3,7 @@ import { useStatsStore } from "../stores/useStatsStore";
 import { getSessionList, getSessionDetail } from "../api/tauriCommands";
 import type { SessionSummary, TokenRecord } from "../types";
 import dayjs from "dayjs";
-import { formatTokens, formatCost } from "../utils/formatter";
+import { formatTokens, formatCost, getSourceLabel, getSourceStyle } from "../utils/formatter";
 
 export default function Sessions() {
   const filters = useStatsStore((s) => s.filters);
@@ -75,10 +75,8 @@ export default function Sessions() {
                   }`}
                 >
                   <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
-                      session.source === "kimi" ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"
-                    }`}>
-                      {session.source === "kimi" ? "Kimi" : "Claude"}
+                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${getSourceStyle(session.source)}`}>
+                      {getSourceLabel(session.source)}
                     </span>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-[var(--color-text-secondary)]">

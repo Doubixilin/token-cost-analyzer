@@ -157,6 +157,11 @@ pub fn init_default_pricing(conn: &Connection) -> Result<()> {
         ("gpt-5.4-xhigh", 5.0, 20.0, 2.5, 5.0),
         ("o1", 15.0, 60.0, 7.5, 15.0),
         ("o3-mini", 1.1, 4.4, 0.55, 1.1),
+        // --- Codex (OpenAI) ---
+        ("gpt-5.3-codex", 2.5, 10.0, 1.25, 2.5),
+        ("gpt-5.4", 5.0, 20.0, 2.5, 5.0),
+        ("gpt-5.5", 5.0, 20.0, 2.5, 5.0),
+        ("gpt-5-codex-high", 5.0, 20.0, 2.5, 5.0),
         // --- DeepSeek ---
         ("deepseek-v4-pro", 0.27, 1.1, 0.07, 0.27),
         ("deepseek-v4-flash", 0.07, 0.28, 0.02, 0.07),

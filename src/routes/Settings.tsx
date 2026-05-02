@@ -557,7 +557,7 @@ export default function Settings() {
           Token Cost Analyzer v0.3.1
         </p>
         <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-          支持 Kimi Code 与 Claude Code 的 Token 消耗统计与分析
+          支持 Kimi Code、Claude Code 与 Codex 的 Token 消耗统计与分析
         </p>
       </div>
     </div>

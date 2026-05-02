@@ -5,11 +5,12 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 static WIDGET_CREATING: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static PINNED_BOTTOM: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WidgetConfig {
-    pub opacity: f64,
     pub locked: bool,
     pub pinned_to_desktop: bool,
     pub selected_modules: Vec<String>,
@@ -26,7 +27,6 @@ pub struct WidgetConfig {
 impl Default for WidgetConfig {
     fn default() -> Self {
         Self {
-            opacity: 0.92,
             locked: false,
             pinned_to_desktop: false,
             selected_modules: vec![
@@ -35,8 +35,8 @@ impl Default for WidgetConfig {
                 "source_split".into(),
             ],
             layout: "vertical".into(),
-            width: 360.0,
-            height: 480.0,
+            width: 320.0,
+            height: 440.0,
             x: None,
             y: None,
             theme: "auto".into(),
@@ -63,10 +63,10 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
     eprintln!("[Widget] Creating widget window...");
     let config = load_config_from_disk(app);
     // Clamp size to prevent corrupted/full-screen dimensions from being used
-    let default_w = 360.0;
-    let default_h = 480.0;
-    let w = if config.width > 50.0 && config.width <= 800.0 { config.width } else { default_w };
-    let h = if config.height > 50.0 && config.height <= 1000.0 { config.height } else { default_h };
+    let default_w = 320.0;
+    let default_h = 440.0;
+    let w = if config.width > 50.0 && config.width <= 600.0 { config.width } else { default_w };
+    let h = if config.height > 50.0 && config.height <= 800.0 { config.height } else { default_h };
     eprintln!("[Widget] Size: {}x{} (raw config: {}x{})", w, h, config.width, config.height);
 
     // In dev mode, use the devUrl directly to avoid Tauri's asset protocol
@@ -89,6 +89,7 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
         .min_inner_size(280.0, 200.0)
         .resizable(true)
         .decorations(false)
+        .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .shadow(false)
@@ -110,16 +111,6 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
         }
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        builder = builder.effects(tauri::utils::config::WindowEffectsConfig {
-            effects: vec![tauri::utils::WindowEffect::Acrylic],
-            state: Some(tauri::utils::WindowEffectState::Active),
-            radius: Some(14.0),
-            color: Some(tauri::utils::config::Color(0, 0, 0, 0)),
-        });
-    }
-
     let widget_win = match builder.build() {
         Ok(win) => win,
         Err(e) => {
@@ -131,6 +122,11 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
 
     // Explicitly set size after build to prevent DWM from expanding the window
     let _ = widget_win.set_size(tauri::LogicalSize::new(w, h));
+
+    // Explicitly ensure cursor events are NOT ignored.
+    // On Windows with decorations(false) + Acrylic, the window may default to
+    // ignoring cursor events (WebView2 treats transparent HTML regions as pass-through).
+    let _ = widget_win.set_ignore_cursor_events(false);
 
     eprintln!("[Widget] Window built successfully, setting up listeners...");
 
@@ -165,7 +161,7 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
                     let w = size.width as f64;
                     let h = size.height as f64;
                     // Only save if within reasonable bounds (prevent corrupted full-screen dimensions)
-                    if w > 50.0 && w <= 800.0 && h > 50.0 && h <= 1000.0 {
+                    if w > 50.0 && w <= 600.0 && h > 50.0 && h <= 800.0 {
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                             if sv.load(Ordering::SeqCst) == v {
@@ -202,6 +198,7 @@ pub fn toggle_widget(app: tauri::AppHandle) -> Result<(), String> {
     } else {
         eprintln!("[Widget] Showing widget");
         win.show().map_err(|e| e.to_string())?;
+        win.set_ignore_cursor_events(false).map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -267,9 +264,12 @@ fn save_widget_config_internal(app: &tauri::AppHandle, config: &WidgetConfig) ->
 // --- Windows 桌面钉入 ---
 #[cfg(target_os = "windows")]
 mod win_desktop {
-    use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumWindows, FindWindowA, GetClassNameA, GetParent, SendMessageA, SetParent,
+        SetWindowPos, ShowWindow, GetWindowRect, IsWindowVisible, GetWindowLongA,
+        SWP_NOSIZE, SWP_NOMOVE, SWP_FRAMECHANGED, SWP_SHOWWINDOW, SWP_NOZORDER,
+        SW_SHOW, HWND_TOP,
     };
     use std::ffi::CStr;
     use std::sync::Mutex;
@@ -326,11 +326,39 @@ mod win_desktop {
                 hw.ok_or("找不到 WorkerW 窗口")?
             };
 
-            let prev = SetParent(hwnd as HWND, workerw as HWND);
-            if prev.is_null() {
-                // SetParent 返回 NULL 可能表示失败，但也可能是原来就没有父窗口
-                // 不一定代表错误，忽略
+            // Debug: inspect WorkerW before reparenting
+            let workerw_style = GetWindowLongA(workerw as HWND, -16); // GWL_STYLE
+            let workerw_visible = IsWindowVisible(workerw as HWND);
+            let mut workerw_rect: RECT = std::mem::zeroed();
+            GetWindowRect(workerw as HWND, &mut workerw_rect);
+            eprintln!("[Widget] WorkerW style={:#x}, visible={}, rect=({},{} {}x{})",
+                workerw_style, workerw_visible,
+                workerw_rect.left, workerw_rect.top,
+                workerw_rect.right - workerw_rect.left,
+                workerw_rect.bottom - workerw_rect.top);
+
+            // Hide before reparenting to avoid DWM compositor glitches
+            // when a WebView2 window is re-parented across processes.
+            ShowWindow(hwnd as HWND, 0); // SW_HIDE = 0
+            SetParent(hwnd as HWND, workerw as HWND);
+
+            // WorkerW must be visible for its children to show. If it is hidden,
+            // make it visible so our widget can appear.
+            if workerw_visible == 0 {
+                eprintln!("[Widget] WorkerW was hidden, making it visible");
+                ShowWindow(workerw as HWND, SW_SHOW);
             }
+
+            // Restore visibility and force style refresh after reparenting.
+            // SWP_NOZORDER removed: explicitly place this window at the top of
+            // WorkerW's child z-order so it is not occluded by other children.
+            ShowWindow(hwnd as HWND, SW_SHOW);
+            SetWindowPos(
+                hwnd as HWND,
+                HWND_TOP,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+            );
 
             Ok(())
         }
@@ -339,7 +367,40 @@ mod win_desktop {
     pub fn unpin_from_desktop(hwnd: isize) -> Result<(), String> {
         unsafe {
             SetParent(hwnd as HWND, std::ptr::null_mut());
+            // After restoring to a top-level window, force a style refresh so
+            // WebView2 regains its proper popup frame and rendering surface.
+            SetWindowPos(
+                hwnd as HWND,
+                std::ptr::null_mut(), // HWND_TOP (0) as proper pointer type
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+            );
             Ok(())
+        }
+    }
+
+    /// Place window at the bottom of the z-order without changing its parent.
+    /// This avoids WebView2 rendering breakage caused by cross-process SetParent.
+    pub fn pin_window_to_bottom(hwnd: isize) {
+        unsafe {
+            SetWindowPos(
+                hwnd as HWND,
+                1 as HWND, // HWND_BOTTOM
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | 0x0010 | SWP_SHOWWINDOW, // 0x0010 = SWP_NOACTIVATE
+            );
+        }
+    }
+
+    /// Restore window to normal z-order (top of its layer).
+    pub fn unpin_window_from_bottom(hwnd: isize) {
+        unsafe {
+            SetWindowPos(
+                hwnd as HWND,
+                std::ptr::null_mut(), // HWND_TOP
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | 0x0010 | SWP_SHOWWINDOW, // 0x0010 = SWP_NOACTIVATE
+            );
         }
     }
 }
@@ -351,29 +412,54 @@ pub fn embed_widget_to_desktop(app: tauri::AppHandle) -> Result<(), String> {
         .get_webview_window("widget")
         .ok_or("小组件窗口不存在，请先打开小组件")?;
 
-    // 获取窗口句柄
+    if !win.is_visible().unwrap_or(false) {
+        win.show().map_err(|e| e.to_string())?;
+    }
+
+    // Remove topmost so the window can live in the normal desktop layer.
+    win.set_always_on_top(false).map_err(|e| e.to_string())?;
+
     let hwnd = win.hwnd().map_err(|e| e.to_string())?;
-    win_desktop::embed_to_desktop(hwnd.0 as isize)?;
 
-    // 设置为不可置顶（因为已经嵌入桌面层）
-    win.set_always_on_bottom(true).map_err(|e| e.to_string())?;
+    // Windows 10/11: cross-process SetParent into Explorer's WorkerW breaks
+    // WebView2 rendering and clips the window to WorkerW's tiny 262x71 rect.
+    // Instead, keep the window as a popup and pin it to the bottom of the
+    // z-order so it stays behind all other apps (desktop-widget behaviour).
+    win_desktop::pin_window_to_bottom(hwnd.0 as isize);
 
+    // Keep the window at the bottom of the z-order every 2s so it does not
+    // get pushed above normal apps when the user interacts with the desktop.
+    PINNED_BOTTOM.store(true, Ordering::SeqCst);
+    let win_clone = win.clone();
+    tauri::async_runtime::spawn(async move {
+        while PINNED_BOTTOM.load(Ordering::SeqCst) {
+            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+            if let Ok(hwnd) = win_clone.hwnd() {
+                win_desktop::pin_window_to_bottom(hwnd.0 as isize);
+            }
+        }
+    });
+
+    eprintln!("[Widget] pinned to bottom (desktop layer)");
     Ok(())
 }
 
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub fn unpin_widget_from_desktop(app: tauri::AppHandle) -> Result<(), String> {
+    PINNED_BOTTOM.store(false, Ordering::SeqCst);
+
     let win = app
         .get_webview_window("widget")
         .ok_or("小组件窗口不存在")?;
 
     let hwnd = win.hwnd().map_err(|e| e.to_string())?;
-    win_desktop::unpin_from_desktop(hwnd.0 as isize)?;
+    win_desktop::unpin_window_from_bottom(hwnd.0 as isize);
 
-    // 恢复置顶
+    // Restore topmost so the widget floats above normal windows again.
     win.set_always_on_top(true).map_err(|e| e.to_string())?;
 
+    eprintln!("[Widget] unpinned from bottom");
     Ok(())
 }
 

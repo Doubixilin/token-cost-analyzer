@@ -100,7 +100,6 @@ export interface SessionListResult {
 }
 
 export interface WidgetConfig {
-  opacity: number;
   locked: boolean;
   pinned_to_desktop: boolean;
   selected_modules: string[];

@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useRef } from "react";
+import { useEffect, useCallback, useState } from "react";
 import {
   Activity,
   DollarSign,
@@ -8,9 +8,11 @@ import {
   ArrowUpRight,
   Database,
   Download,
+  RefreshCw,
 } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
 import { getOverviewStats, getTrendData, getFilterOptions, refreshData, exportData } from "../api/tauriCommands";
+import { emit } from "@tauri-apps/api/event";
 import StatCard from "../components/StatCard";
 import TrendChart from "../components/TrendChart";
 import FilterBar from "../components/FilterBar";
@@ -23,12 +25,15 @@ export default function Dashboard() {
   const overview = useStatsStore((s) => s.overview);
   const trendData = useStatsStore((s) => s.trendData);
   const isLoading = useStatsStore((s) => s.isLoading);
+  const isSyncing = useStatsStore((s) => s.isSyncing);
   const setOverview = useStatsStore((s) => s.setOverview);
   const setTrendData = useStatsStore((s) => s.setTrendData);
   const setLoading = useStatsStore((s) => s.setLoading);
+  const setSyncing = useStatsStore((s) => s.setSyncing);
   const setAvailableOptions = useStatsStore((s) => s.setAvailableOptions);
+  const notifyRefresh = useStatsStore((s) => s.notifyRefresh);
   const [exporting, setExporting] = useState(false);
-  const autoSyncedRef = useRef(false);
+  const [dataChecked, setDataChecked] = useState(false);
 
   const fetchDashboardData = useCallback(async () => {
     const [stats, trend, options] = await Promise.all([
@@ -41,22 +46,34 @@ export default function Dashboard() {
     setAvailableOptions(options.sources, options.models, options.projects);
   }, [filters, setOverview, setTrendData, setAvailableOptions]);
 
-  // Auto-sync on first mount (only once)
-  useEffect(() => {
-    if (autoSyncedRef.current) return;
-    autoSyncedRef.current = true;
-    refreshData().catch((e) => console.error("Auto-sync failed:", e));
-  }, []);
-
   // Re-fetch when filters change or sidebar triggers refresh
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     fetchDashboardData()
       .catch((e) => console.error("Failed to load dashboard data:", e))
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+          setDataChecked(true);
+        }
+      });
     return () => { cancelled = true; };
   }, [fetchDashboardData, refreshVersion, setLoading]);
+
+  const handleManualSync = async () => {
+    setSyncing(true);
+    try {
+      const count = await refreshData();
+      console.log(`[Dashboard] Manual sync completed: ${count} records`);
+      notifyRefresh();
+      emit("data-synced", {}).catch(() => {});
+    } catch (e) {
+      console.error("Manual sync failed:", e);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const inputTokens = overview?.total_input || 0;
   const outputTokens = overview?.total_output || 0;
@@ -88,7 +105,13 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-[var(--color-text)]">仪表盘</h2>
         <div className="flex items-center gap-3">
-          {isLoading && (
+          {isSyncing && (
+            <span className="text-sm text-[var(--color-primary)] flex items-center gap-1.5">
+              <span className="inline-block w-3.5 h-3.5 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+              正在同步数据...
+            </span>
+          )}
+          {isLoading && !isSyncing && (
             <span className="text-sm text-[var(--color-text-secondary)]">加载中...</span>
           )}
           <button
@@ -112,6 +135,25 @@ export default function Dashboard() {
       </div>
 
       <FilterBar />
+
+      {/* Empty state prompt */}
+      {dataChecked && overview === null && !isSyncing && (
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-8 text-center shadow-sm">
+          <Database size={40} className="mx-auto mb-4 text-[var(--color-text-secondary)]" />
+          <h3 className="text-lg font-semibold text-[var(--color-text)] mb-2">暂无数据</h3>
+          <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+            数据库中暂无 Token 记录。首次同步可能需要几分钟（约 1,100+ 文件）。
+          </p>
+          <button
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+            {isSyncing ? "同步中..." : "立即同步数据"}
+          </button>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

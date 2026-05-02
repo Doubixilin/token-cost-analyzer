@@ -267,7 +267,7 @@ fn ensure_all_models_priced(conn: &mut Connection) -> Result<(), rusqlite::Error
     for model in models {
         // Use unknown model defaults (2.0/8.0/0.2/2.0) instead of zero prices
         conn.execute(
-            "INSERT INTO model_pricing (model, input_price, output_price, cache_read_price, cache_creation_price, currency) VALUES (?1, 2.0, 8.0, 0.2, 2.0, 'USD')",
+            "INSERT INTO model_pricing (model, input_price, output_price, cache_read_price, cache_creation_price, currency) VALUES (?1, 2.0, 8.0, 0.2, 2.0, 'CNY')",
             [&model],
         )?;
     }
@@ -374,6 +374,7 @@ fn parse_selected_kimi_files(
             };
             // Re-use the same parsing logic as the main parser
             if msg.message.msg_type != "StatusUpdate" { continue; }
+            let timestamp = match msg.timestamp { Some(t) => t, None => continue };
             let payload = match msg.message.payload { Some(p) => p, None => continue };
             let usage = match payload.token_usage { Some(u) => u, None => continue };
 
@@ -383,7 +384,7 @@ fn parse_selected_kimi_files(
                 session_id: session_id.clone(),
                 agent_type: agent_type.to_string(),
                 agent_id: agent_id.clone(),
-                timestamp: msg.timestamp,
+                timestamp,
                 model: Some(default_model.clone()),
                 input_tokens: usage.input_other,
                 output_tokens: usage.output,

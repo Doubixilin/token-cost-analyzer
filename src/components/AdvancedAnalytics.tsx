@@ -9,7 +9,6 @@ import {
   getScatterData,
   getSankeyData,
   getDistribution,
-  getTopN,
 } from "../api/tauriCommands";
 import { formatTokens } from "../utils/formatter";
 import { getChartColors } from "../utils/chartColors";
@@ -32,8 +31,6 @@ export default function AdvancedAnalytics() {
   const [scatter, setScatter] = useState<{ input: number; output: number; model: string; cost: number }[]>([]);
   const [sankey, setSankey] = useState<[string, string, number][]>([]);
   const [agentDist, setAgentDist] = useState<{ name: string; value: number; cost: number }[]>([]);
-  const [projectTop, setProjectTop] = useState<{ id: string; name: string; value: number; cost: number }[]>([]);
-
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -43,9 +40,8 @@ export default function AdvancedAnalytics() {
       getScatterData(filters, 300),
       getSankeyData(filters),
       getDistribution(filters, "agent_type"),
-      getTopN(filters, "project", "tokens", 10),
     ])
-      .then(([h, mt, cc, sc, sk, ad, pt]) => {
+      .then(([h, mt, cc, sc, sk, ad]) => {
         if (cancelled) return;
         setHourly(h);
         setModelTrend(mt);
@@ -53,7 +49,6 @@ export default function AdvancedAnalytics() {
         setScatter(sc);
         setSankey(sk);
         setAgentDist(ad);
-        setProjectTop(pt);
       })
       .catch((e) => console.error(e));
     return () => { cancelled = true; };
@@ -77,7 +72,7 @@ export default function AdvancedAnalytics() {
       tooltip: {
         trigger: "item",
         formatter: (p: any) =>
-          `${p.seriesName}<br/>Input: ${formatTokens(p.data[0])}<br/>Output: ${formatTokens(p.data[1])}<br/>Total: ${formatTokens(p.data[2])}<br/>Cost: $${p.data[3].toFixed(4)}`,
+          `${p.seriesName}<br/>Input: ${formatTokens(p.data[0])}<br/>Output: ${formatTokens(p.data[1])}<br/>Total: ${formatTokens(p.data[2])}<br/>Cost: ¥${p.data[3].toFixed(4)}`,
       },
       legend: { data: models, bottom: 0, type: "scroll" },
       grid: { left: "3%", right: "4%", bottom: "15%", top: "15%", containLabel: true },
@@ -170,10 +165,10 @@ export default function AdvancedAnalytics() {
     });
     return {
       title: { text: "累计成本曲线", left: "center", textStyle: { fontSize: 14 } },
-      tooltip: { trigger: "axis", formatter: (p: any) => `${p.data[0]}<br/>累计成本: $${p.data[1]}` },
+      tooltip: { trigger: "axis", formatter: (p: any) => `${p.data[0]}<br/>累计成本: ¥${p.data[1]}` },
       grid: { left: "3%", right: "4%", bottom: "10%", top: "15%", containLabel: true },
       xAxis: { type: "category", data: cumulative.map((d) => d.date), axisLabel: { color: cc.textSecondary } },
-      yAxis: { type: "value", name: "Cost ($)", axisLabel: { formatter: "${value}" } },
+      yAxis: { type: "value", name: "Cost (¥)", axisLabel: { formatter: "¥{value}" } },
       series: [
         {
           type: "line",
@@ -229,26 +224,6 @@ export default function AdvancedAnalytics() {
     ],
   }), [agentDist, cc.text]);
 
-  // C. Project Top Bar
-  const projectBarOption = useMemo(() => ({
-    title: { text: "项目消耗 Top 10", left: "center", textStyle: { fontSize: 14 } },
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    grid: { left: "3%", right: "4%", bottom: "3%", containLabel: true },
-    xAxis: {
-      type: "value",
-      interval: 100000000,
-      axisLabel: { formatter: (v: number) => formatTokens(v), color: cc.textSecondary },
-    },
-    yAxis: { type: "category", data: projectTop.map((d) => d.name.slice(0, 20)).reverse() },
-    series: [
-      {
-        type: "bar",
-        data: projectTop.map((d) => d.value).reverse(),
-        itemStyle: { color: "#8b5cf6", borderRadius: [0, 4, 4, 0] },
-      },
-    ],
-  }), [projectTop, cc.textSecondary]);
-
   return (
     <div className="space-y-6">
       {/* A. Efficiency */}
@@ -262,16 +237,15 @@ export default function AdvancedAnalytics() {
         <ChartCard option={modelTrendOption} height={350} ariaLabel="模型迁移趋势" />
       </div>
 
-      {/* C. Project & Agent */}
+      {/* C. Agent Type */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChartCard option={agentPieOption} height={300} ariaLabel="代理类型分布" />
-        <ChartCard option={projectBarOption} height={300} ariaLabel="项目消耗排行" />
       </div>
 
       {/* D. Cost + Sankey */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChartCard option={cumulativeOption} height={300} ariaLabel="累计成本曲线" />
-        {sankey.length > 0 ? (
+        {(sankey?.length ?? 0) > 0 ? (
           <ChartCard option={sankeyOption} height={300} ariaLabel="Token 流向桑基图" />
         ) : (
           <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm h-[300px] flex items-center justify-center text-[var(--color-text-secondary)]">

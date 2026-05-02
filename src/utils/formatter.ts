@@ -12,7 +12,7 @@ export function formatTokens(num: number): string {
 }
 
 export function formatCost(cost: number): string {
-  return "$" + cost.toFixed(4);
+  return "¥" + cost.toFixed(4);
 }
 
 export const SOURCE_LABELS: Record<string, string> = {

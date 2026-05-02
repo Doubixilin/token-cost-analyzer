@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo, Component, type Reac
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { Activity, RefreshCw, Settings, Lock, Unlock, Pin, PinOff, X, AlertCircle, GripVertical } from "lucide-react";
-import { getOverviewStats, getTrendData, getDistribution, getHourlyDistribution, getTopN, embedWidgetToDesktop, unpinWidgetFromDesktop } from "../api/tauriCommands";
+import { getOverviewStats, getTrendData, getDistribution, getHourlyDistribution, embedWidgetToDesktop, unpinWidgetFromDesktop, refreshData } from "../api/tauriCommands";
 import { formatCost, formatTokens, formatNumber } from "../utils/formatter";
 import { useWidgetStore } from "../stores/useWidgetStore";
 import type { FilterParams, TimePeriod } from "../types";
@@ -82,7 +82,7 @@ const OverviewModule = memo(function OverviewModule() {
 
   return (
     <div className="grid grid-cols-2 gap-1.5">
-      <StatMini icon="$" label="总成本" value={formatCost(overview.total_cost)} color="#10b981" />
+      <StatMini icon="¥" label="总成本" value={formatCost(overview.total_cost)} color="#10b981" />
       <StatMini icon="T" label="总 Token" value={formatTokens(overview.total_tokens)} color="#3b82f6" />
       <StatMini icon="#" label="总请求" value={formatNumber(overview.total_requests)} color="#8b5cf6" />
       <StatMini icon="%" label="缓存命中" value={totalCache > 0 ? `${cacheHitRate.toFixed(0)}%` : "—"} color="#f59e0b" />
@@ -93,7 +93,7 @@ const OverviewModule = memo(function OverviewModule() {
 // --- Sparkline Trend Module ---
 const TrendModule = memo(function TrendModule() {
   const trendData = useWidgetStore(s => s.trendData);
-  if (trendData.length === 0) return <EmptyModule text="暂无趋势数据" />;
+  if ((trendData?.length ?? 0) === 0) return <EmptyModule text="暂无趋势数据" />;
 
   const recent = trendData.slice(-30);
   const values = recent.map(d => d.input_tokens + d.output_tokens);
@@ -147,7 +147,7 @@ const TrendModule = memo(function TrendModule() {
 const SourceSplitModule = memo(function SourceSplitModule() {
   const distribution = useWidgetStore(s => s.distribution);
   const colorMap = useColorMap(distribution.map(d => d.name));
-  if (distribution.length === 0) return <EmptyModule text="暂无工具分布数据" />;
+  if ((distribution?.length ?? 0) === 0) return <EmptyModule text="暂无工具分布数据" />;
   const total = distribution.reduce((s, d) => s + d.value, 0) || 1;
 
   return (
@@ -174,7 +174,7 @@ const SourceSplitModule = memo(function SourceSplitModule() {
 // --- Model Distribution Module ---
 const ModelDistModule = memo(function ModelDistModule() {
   const modelDistribution = useWidgetStore(s => s.modelDistribution);
-  if (modelDistribution.length === 0) return <EmptyModule text="暂无模型分布数据" />;
+  if ((modelDistribution?.length ?? 0) === 0) return <EmptyModule text="暂无模型分布数据" />;
   const top5 = modelDistribution.slice(0, 5);
   const maxVal = Math.max(...top5.map(d => d.value), 1);
 
@@ -201,7 +201,7 @@ const ModelDistModule = memo(function ModelDistModule() {
 // --- Hourly Distribution Module ---
 const HourlyDistModule = memo(function HourlyDistModule() {
   const hourlyData = useWidgetStore(s => s.hourlyData);
-  if (hourlyData.length === 0) return <EmptyModule text="暂无时段分布数据" />;
+  if ((hourlyData?.length ?? 0) === 0) return <EmptyModule text="暂无时段分布数据" />;
 
   const map = new Map<number, number>();
   for (const d of hourlyData) map.set(d.hour, d.tokens);
@@ -233,35 +233,6 @@ const HourlyDistModule = memo(function HourlyDistModule() {
   );
 });
 
-// --- Top Projects Module ---
-const TopProjectsModule = memo(function TopProjectsModule() {
-  const topProjects = useWidgetStore(s => s.topProjects);
-  if (topProjects.length === 0) return <EmptyModule text="暂无项目消耗数据" />;
-  const maxVal = Math.max(...topProjects.map(d => d.value), 1);
-
-  return (
-    <div className="widget-card px-3 py-2.5">
-      <p className="text-[11px] text-[var(--color-text-secondary)] mb-2">项目消耗 Top 5</p>
-      <div className="space-y-1.5">
-        {topProjects.slice(0, 5).map((d, i) => {
-          const shortName = d.name.split(/[/\\]/).pop() || d.name;
-          return (
-            <div key={d.id} className="space-y-0.5">
-              <div className="flex justify-between">
-                <span className="text-[10px] text-[var(--color-text)] truncate max-w-[70%]" title={d.name}>{shortName}</span>
-                <span className="text-[10px] text-[var(--color-text-secondary)]">{formatTokens(d.value)}</span>
-              </div>
-              <div className="h-1.5 bg-[var(--color-border)] rounded-full overflow-hidden">
-                <div className="h-full rounded-full transition-[width]" style={{ width: `${(d.value / maxVal) * 100}%`, backgroundColor: PALETTE[i % PALETTE.length] }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-});
-
 // --- Module Registry ---
 const MODULE_MAP: Record<string, React.FC> = {
   overview: OverviewModule,
@@ -269,7 +240,6 @@ const MODULE_MAP: Record<string, React.FC> = {
   source_split: SourceSplitModule,
   model_dist: ModelDistModule,
   hourly_dist: HourlyDistModule,
-  top_projects: TopProjectsModule,
 };
 
 const MODULE_LABELS: Record<string, string> = {
@@ -278,7 +248,6 @@ const MODULE_LABELS: Record<string, string> = {
   source_split: "工具分布",
   model_dist: "模型分布",
   hourly_dist: "时段分布",
-  top_projects: "项目消耗",
 };
 
 // --- Time Period Selector ---
@@ -318,14 +287,6 @@ const SettingsPanel = memo(function SettingsPanel() {
 
   return (
     <div className="px-3 py-2.5 space-y-3 border-t border-[var(--color-border)]">
-      <div>
-        <p className="text-[11px] text-[var(--color-text-secondary)] mb-1.5">透明度</p>
-        <input
-          type="range" min={30} max={100} step={5} value={Math.round(config.opacity * 100)}
-          onChange={e => setConfig({ opacity: Number(e.target.value) / 100 })}
-          className="w-full h-1.5 rounded-full appearance-none bg-[var(--color-border)] accent-[var(--color-primary)]"
-        />
-      </div>
       <div>
         <p className="text-[11px] text-[var(--color-text-secondary)] mb-1.5">显示模块</p>
         <div className="space-y-1">
@@ -374,6 +335,15 @@ const WidgetHeader = memo(function WidgetHeader() {
     try { await getCurrentWindow().hide(); } catch (e) { console.error("hide failed:", e); }
   }, []);
 
+  const handleRefresh = useCallback(async () => {
+    try {
+      await refreshData();
+      bumpRefresh();
+    } catch (e) {
+      console.error("Widget 同步失败:", e);
+    }
+  }, [bumpRefresh]);
+
   const handlePin = useCallback(async () => {
     try {
       if (pinned) {
@@ -400,7 +370,7 @@ const WidgetHeader = memo(function WidgetHeader() {
         {!locked && <GripVertical size={12} className="text-[var(--color-text-secondary)] opacity-40" />}
       </div>
       <div data-no-drag className="flex items-center gap-0.5">
-        <button onClick={bumpRefresh} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" aria-label="刷新数据">
+        <button onClick={handleRefresh} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" aria-label="刷新数据">
           <RefreshCw size={13} className={`text-[var(--color-text-secondary)] ${isLoading ? "animate-spin" : ""}`} />
         </button>
         <button onClick={toggleSettings} className="p-1.5 rounded-md hover:bg-white/20 dark:hover:bg-white/10 transition-colors" aria-label="设置">
@@ -455,7 +425,7 @@ const WidgetBody = memo(function WidgetBody() {
     );
   }
 
-  if (selectedModules.length === 0) {
+  if ((selectedModules?.length ?? 0) === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <p className="text-[11px] text-[var(--color-text-secondary)]">请在设置中选择显示模块</p>
@@ -507,11 +477,11 @@ export default function WidgetApp() {
   const setDistribution = useWidgetStore(s => s.setDistribution);
   const setModelDistribution = useWidgetStore(s => s.setModelDistribution);
   const setHourlyData = useWidgetStore(s => s.setHourlyData);
-  const setTopProjects = useWidgetStore(s => s.setTopProjects);
   const setLoading = useWidgetStore(s => s.setLoading);
 
   const [error, setError] = useState<string | null>(null);
   const handleDismissError = useCallback(() => setError(null), []);
+  const [isDark, setIsDark] = useState(false);
 
   // Initialize config
   useEffect(() => { loadConfig(); }, [loadConfig]);
@@ -524,14 +494,25 @@ export default function WidgetApp() {
     return () => { unlisten.then((fn) => fn()); };
   }, [loadConfig]);
 
-  // Apply theme
+  // Listen for data-sync events from the main window so the widget refreshes
+  // automatically after the user syncs in the main app.
+  useEffect(() => {
+    const unlisten = listen("data-synced", () => {
+      useWidgetStore.getState().bumpRefresh();
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
+  // Apply theme and sync isDark state so the background layer re-renders correctly.
   useEffect(() => {
     const applyTheme = () => {
-      if (config.theme === "dark" || (config.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+      const dark = config.theme === "dark" || (config.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      if (dark) {
         document.documentElement.classList.add("dark");
       } else {
         document.documentElement.classList.remove("dark");
       }
+      setIsDark(dark);
     };
     applyTheme();
     if (config.theme === "auto") {
@@ -541,17 +522,7 @@ export default function WidgetApp() {
     }
   }, [config.theme]);
 
-  // Apply opacity
-  useEffect(() => {
-    const root = document.documentElement;
-    const glass = root.querySelector('.widget-glass') as HTMLElement | null;
-    if (!glass) return;
-    const alpha = config.opacity;
-    const isDark = root.classList.contains("dark");
-    glass.style.background = isDark
-      ? `rgba(15, 23, 42, ${0.82 * alpha})`
-      : `rgba(255, 255, 255, ${0.78 * alpha})`;
-  }, [config.opacity, config.theme]);
+
 
   // Fetch data
   useEffect(() => {
@@ -561,13 +532,12 @@ export default function WidgetApp() {
       try {
         const filters = getFiltersFromPeriod(config.time_period);
         const trendGranularity = config.time_period === "today" ? "hour" : "day";
-        const [ov, trend, dist, modelDist, hourly, projects] = await Promise.all([
+        const [ov, trend, dist, modelDist, hourly] = await Promise.all([
           getOverviewStats(filters),
           getTrendData(filters, trendGranularity),
           getDistribution(filters, "source"),
           getDistribution(filters, "model"),
           getHourlyDistribution(filters),
-          getTopN(filters, "project", "tokens", 5),
         ]);
         if (!cancelled) {
           setOverview(ov);
@@ -575,7 +545,6 @@ export default function WidgetApp() {
           setDistribution(dist);
           setModelDistribution(modelDist);
           setHourlyData(hourly);
-          setTopProjects(projects);
           setError(null);
         }
       } catch (e) {
@@ -587,7 +556,7 @@ export default function WidgetApp() {
     };
     fetchData();
     return () => { cancelled = true; };
-  }, [refreshVersion, config.time_period, setLoading, setOverview, setTrendData, setDistribution, setModelDistribution, setHourlyData, setTopProjects]);
+  }, [refreshVersion, config.time_period, setLoading, setOverview, setTrendData, setDistribution, setModelDistribution, setHourlyData]);
 
   // Auto-refresh
   useEffect(() => {
@@ -600,8 +569,12 @@ export default function WidgetApp() {
 
   return (
     <WidgetErrorBoundary>
-      <div className="h-full flex flex-col">
-        <div className="widget-glass h-full flex flex-col overflow-hidden">
+      <div className="h-full relative">
+        <div
+          className="absolute inset-0 rounded-[14px]"
+          style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff' }}
+        />
+        <div className="widget-glass relative h-full flex flex-col overflow-hidden">
           <WidgetHeader />
           <TimePeriodSelector />
           {error && <ErrorToast message={error} onDismiss={handleDismissError} />}

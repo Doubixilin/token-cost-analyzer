@@ -25,7 +25,6 @@ export default function Settings() {
 
   // Widget config state — 初始化为默认值，确保卡片始终显示
   const [widgetConfig, setWidgetConfig] = useState<WidgetConfig>({
-    opacity: 0.92,
     locked: false,
     pinned_to_desktop: false,
     selected_modules: ["overview", "trend", "source_split"],
@@ -314,20 +313,6 @@ export default function Settings() {
               </div>
             </div>
 
-            {/* Opacity */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium text-[var(--color-text)]">透明度</p>
-                <span className="text-xs text-[var(--color-text-secondary)]">{Math.round(widgetConfig.opacity * 100)}%</span>
-              </div>
-              <input
-                type="range" min={30} max={100} step={5}
-                value={Math.round(widgetConfig.opacity * 100)}
-                onChange={(e) => updateWidget({ opacity: Number(e.target.value) / 100 })}
-                className="w-full h-1.5 rounded-full appearance-none bg-[var(--color-border)] accent-[var(--color-primary)]"
-              />
-            </div>
-
             {/* Refresh Interval */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -569,7 +554,7 @@ export default function Settings() {
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
         <h3 className="text-base font-semibold mb-2">关于</h3>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Token Cost Analyzer v0.3.0
+          Token Cost Analyzer v0.3.1
         </p>
         <p className="text-sm text-[var(--color-text-secondary)] mt-1">
           支持 Kimi Code 与 Claude Code 的 Token 消耗统计与分析

@@ -8,7 +8,7 @@ interface TrendChartProps {
   showCost?: boolean;
 }
 
-export default function TrendChart({ data, showCost = true }: TrendChartProps) {
+export default function TrendChart({ data = [], showCost = true }: TrendChartProps) {
   const option = useMemo(() => {
     const dates = data.map((d) => d.date);
     return {
@@ -49,11 +49,11 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
         },
         {
           type: "value",
-          name: "成本 ($)",
+          name: "成本 (¥)",
           position: "right",
           show: showCost,
           axisLabel: {
-            formatter: "${value}",
+            formatter: "¥{value}",
           },
         },
       ],
@@ -107,7 +107,7 @@ export default function TrendChart({ data, showCost = true }: TrendChartProps) {
     };
   }, [data, showCost]);
 
-  if (data.length === 0) {
+  if (!data || data.length === 0) {
     return (
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-8 text-center text-[var(--color-text-secondary)]">
         暂无数据，请点击左侧"刷新数据"按钮同步

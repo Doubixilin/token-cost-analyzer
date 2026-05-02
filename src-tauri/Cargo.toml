@@ -1,6 +1,6 @@
 [package]
 name = "token-cost-analyzer"
-version = "0.3.0"
+version = "0.3.1"
 description = "AI Coding Assistant Token Cost Analyzer"
 authors = ["Doubixilin"]
 edition = "2021"
@@ -17,8 +17,12 @@ crate-type = ["rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+default = []
+custom-protocol = ["tauri/custom-protocol"]
+
 [dependencies]
-tauri = { version = "2", features = ["custom-protocol", "tray-icon"] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }

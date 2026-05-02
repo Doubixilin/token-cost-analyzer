@@ -58,30 +58,29 @@ body {
   background: var(--color-scrollbar-hover);
 }
 
-/* 小组件毛玻璃效果 — 仅依赖 Windows Acrylic，不叠加 CSS blur */
+/* 小组件 — 内容层边框/阴影 */
 .widget-glass {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
   user-select: none;
   -webkit-user-select: none;
+  /* Strong text shadow for readability on transparent background */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 4px rgba(0, 0, 0, 0.15);
 }
 
 .dark .widget-glass {
-  background: rgba(15, 23, 42, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.30), 0 2px 8px rgba(0, 0, 0, 0.20);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6), 0 0 6px rgba(0, 0, 0, 0.3);
 }
 
 .widget-card {
-  background: rgba(255, 255, 255, 0.70);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 10px;
 }
 
 .dark .widget-card {
-  background: rgba(30, 41, 59, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 

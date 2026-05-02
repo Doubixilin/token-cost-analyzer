@@ -24,6 +24,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_token_records_timestamp ON token_records(timestamp);
         CREATE INDEX IF NOT EXISTS idx_token_records_source ON token_records(source);
         CREATE INDEX IF NOT EXISTS idx_token_records_model ON token_records(model);
+        CREATE INDEX IF NOT EXISTS idx_token_records_source_session ON token_records(source, session_id);
 
         CREATE TABLE IF NOT EXISTS session_summary (
             session_id TEXT PRIMARY KEY,
@@ -49,7 +50,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             output_price REAL DEFAULT 0,
             cache_read_price REAL DEFAULT 0,
             cache_creation_price REAL DEFAULT 0,
-            currency TEXT DEFAULT 'USD'
+            currency TEXT DEFAULT 'CNY'
         );
 
         CREATE TABLE IF NOT EXISTS sync_state (
@@ -104,7 +105,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
     }
 
     // Migrate: fix Kimi records that had model='unknown' due to config.toml field name bug.
-    // Delete them and clear their sync_state so incremental sync re-parses with correct model.
+    // Delete them and clear only Kimi file sync_state entries so incremental sync re-parses Kimi files.
     let has_unknown_kimi: bool = conn.query_row(
         "SELECT 1 FROM token_records WHERE source = 'kimi' AND (model = 'unknown' OR model IS NULL) LIMIT 1",
         [],
@@ -112,10 +113,11 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
     ).unwrap_or(false);
 
     if has_unknown_kimi {
-        eprintln!("[migration] Found Kimi records with model='unknown', clearing for re-sync...");
+        eprintln!("[migration] Found Kimi records with model='unknown', clearing Kimi files for re-sync...");
         conn.execute("DELETE FROM token_records WHERE source = 'kimi' AND (model = 'unknown' OR model IS NULL)", [])?;
-        // Clear all sync_state so ALL files get re-parsed (safe: incremental sync rebuilds it)
-        conn.execute("DELETE FROM sync_state", [])?;
+        // Only clear sync_state for Kimi files (identified by path containing '.kimi' or 'wire.jsonl')
+        // so Claude files don't needlessly get re-parsed.
+        conn.execute("DELETE FROM sync_state WHERE file_path LIKE '%.kimi%' OR file_path LIKE '%wire.jsonl%'", [])?;
     }
 
     Ok(())
@@ -166,7 +168,7 @@ pub fn init_default_pricing(conn: &Connection) -> Result<()> {
         // Insert new models with defaults; update existing zero-priced models
         conn.execute(
             "INSERT INTO model_pricing (model, input_price, output_price, cache_read_price, cache_creation_price, currency)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'USD')
+             VALUES (?1, ?2, ?3, ?4, ?5, 'CNY')
              ON CONFLICT(model) DO UPDATE SET
                input_price = excluded.input_price,
                output_price = excluded.output_price,

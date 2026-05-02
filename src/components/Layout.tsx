@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
 import { refreshData, getFilterOptions, toggleWidget } from "../api/tauriCommands";
+import { emit } from "@tauri-apps/api/event";
 import { useState, useEffect } from "react";
 
 const navItems = [
@@ -45,6 +46,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       const opts = await getFilterOptions();
       setAvailableOptions(opts.sources, opts.models, opts.projects);
       notifyRefresh();
+      emit("data-synced", {}).catch(() => {});
     } catch (e) {
       setSyncMessage("同步失败: " + String(e));
     } finally {

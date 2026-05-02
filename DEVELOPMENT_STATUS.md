@@ -1,7 +1,7 @@
 # Token Cost Analyzer - 开发进度文档
 
-> 最后更新: 2026-05-01
-> 当前阶段: v0.3.0 桌面悬浮小组件 + 系统托盘
+> 最后更新: 2026-05-02
+> 当前阶段: v0.3.1 移除透明度功能 + 货币统一为 CNY
 
 ---
 
@@ -102,13 +102,23 @@
 - [x] **Tray 优雅退出** — `std::process::exit(0)` → `app.exit(0)`，触发正常关闭流程
 - [x] **get_filter_options 结构体** — 元组 `(Vec, Vec, Vec)` → `FilterOptions` 自描述结构体
 - [x] **get_session_list hasMore** — 后端查询 `limit + 1`，返回 `SessionListResult { items, has_more }`，彻底消除最后一页误判
-- [x] **货币统一** — `formatCost` / Dashboard / Sessions / Settings 全部统一为 `$`（与数据库 USD 一致）
+- [x] **货币统一** — `formatCost` / Dashboard / Sessions / Settings 全部统一为 `¥`（与数据库 CNY 一致）
 - [x] **mtime 精度** — `f64` → `i64` 秒级 Unix 时间戳，消除浮点数相等比较风险
 - [x] **清理死依赖** — `npm uninstall docx`
 - [x] **版本号同步** — `package.json` / `tauri.conf.json` / `Cargo.toml` 统一为 `0.3.0`
 - [x] **lang 统一** — `index.html` `en` → `zh-CN`
 
 ### Phase 10: 第二轮代码审查修复 ✅ (2026-05-01)
+- [x] **货币统一** — `$` → `¥`，后端 `USD` → `CNY`（`formatCost`、`TrendChart`、`AdvancedAnalytics`、`Settings`、widget `StatMini`、DB 默认值）
+- [x] **Widget 桌面钉入重构** — 废弃 `SetParent`/`WorkerW` 方案（Win11 WorkerW 隐藏/262×71），改为 `SetWindowPos(HWND_BOTTOM)` + 2s 维护定时器
+- [x] **Widget 刷新联动** — 主窗口同步后发射 `data-synced` 事件，小组件自动刷新数据
+- [x] **Zustand 性能修复** — `Layout.tsx` / `Settings.tsx` 改为细粒度 selector，消除全量解构导致的重渲染
+
+### Phase 11: 移除透明度功能 ✅ (2026-05-02)
+- [x] **移除透明度调节** — Windows WebView2 不支持 CSS `rgba()` 半透明（alpha 非 0 被替换为 255），无法通过 CSS 实现真正的半透明背景。移除设置页和小组件设置面板中的透明度滑块
+- [x] **固定背景色** — 小组件背景改为固定主题色（浅色 `#ffffff` / 深色 `#1e293b`）
+- [x] **清理 `WidgetConfig.opacity`** — `widget.rs` / `types/index.ts` / `useWidgetStore.ts` / `Settings.tsx` / `WidgetApp.tsx` 同步移除 `opacity` 字段
+- [x] **移除 `background_color(Color(0,0,0,0))`** — 恢复 WebView2 默认背景色行为
 - [x] **`get_session_detail` 参数名不匹配** — 前端 `{ sessionId }` → `{ session_id: sessionId }`，修复 Tauri v2 serde 反序列化失败
 - [x] **`get_session_list` 全维度筛选** — 新增 `projects` / `models` / `agent_types` 筛选支持（models/agent_types 通过 `token_records` 子查询）
 - [x] **自定义模型默认定价** — `ensure_all_models_priced` 插入 0 价格 → 回退到 `"unknown"` 默认价格（2.0/8.0/0.2/2.0）
@@ -153,6 +163,11 @@
 | Excel URL 过早回收 | 🟡 中 | ✅ 已修复 | 5 秒延迟释放 |
 | `sync_state` schema 类型不一致 | 🟢 低 | ✅ 已修复 | `REAL` → `INTEGER` |
 | `changed_paths` 线性查找 | 🟢 低 | ✅ 已修复 | `HashSet` O(1) 优化 |
+| 前端 `undefined.length` 崩溃 | 🔴 高 | 🟡 缓解中 | ErrorBoundary 捕获，已添加 `?.length` 防御性代码，根因待定位 |
+| 后端进程崩溃 `0xcfffffff` | 🔴 高 | 🟡 观察中 | 同步 126k+ 记录时偶发崩溃。2026-05-01 测试显示同步+recalc 本身可成功完成（`Done! 126925 records`），崩溃可能发生在前端渲染阶段或 Widget 窗口 |
+| 增量同步失效（全量重扫） | 🔴 高 | 🟡 缓解中 | `schema.rs` 迁移逻辑已改为只清 Kimi 路径（`%.kimi%`/`%wire.jsonl%`），不再全表清空。Kimi parser `timestamp` 已改为 `Option` 减少解析失败 |
+| 首次同步阻塞 UI | 🟡 中 | 🟡 缓解中 | Dashboard 已移除自动同步，改为空数据提示+手动同步按钮 |
+| Kimi parser 严格性 | 🟡 中 | 🟡 缓解中 | `timestamp` 改为 `Option<f64>` 后，解析错误从 `missing field timestamp` 变为 `missing field message`，说明很多 JSON 行根本不是 `WireMessage` 格式 |
 
 ---
 

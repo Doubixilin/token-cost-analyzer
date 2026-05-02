@@ -201,7 +201,7 @@ export default function Analytics() {
           <ReactECharts option={barOption} style={{ height: 350 }} lazyUpdate={true} echarts={echarts} />
         </div>
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm" role="img" aria-label="Token 消耗热力图">
-          {heatmapData.length > 0 ? (
+          {(heatmapData?.length ?? 0) > 0 ? (
             <ReactECharts option={heatmapOption} style={{ height: 350 }} lazyUpdate={true} echarts={echarts} />
           ) : (
             <div className="h-[350px] flex items-center justify-center text-[var(--color-text-secondary)]">

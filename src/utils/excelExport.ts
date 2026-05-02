@@ -97,7 +97,7 @@ export function exportExcelReport(options: {
   XLSX.utils.book_append_sheet(wb, wsTop, "Top 10 会话");
 
   // Sheet 5: 趋势数据
-  if (trendData.length > 0) {
+  if ((trendData?.length ?? 0) > 0) {
     const trendRows: any[][] = [
       ["日期", "Input", "Output", "Cache Read", "Cache Creation", "Cost"],
     ];

@@ -3,13 +3,12 @@ import type { OverviewStats, TrendPoint, DistributionItem, TopNItem, WidgetConfi
 import { saveWidgetConfig, loadWidgetConfig } from "../api/tauriCommands";
 
 const DEFAULT_CONFIG: WidgetConfig = {
-  opacity: 0.92,
   locked: false,
   pinned_to_desktop: false,
   selected_modules: ["overview", "trend", "source_split"],
   layout: "vertical",
-  width: 360,
-  height: 480,
+  width: 320,
+  height: 440,
   x: null,
   y: null,
   theme: "auto",

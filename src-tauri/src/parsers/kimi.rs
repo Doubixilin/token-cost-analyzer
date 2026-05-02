@@ -8,7 +8,7 @@ use crate::models::TokenRecord;
 
 #[derive(Debug, Deserialize)]
 pub struct WireMessage {
-    pub timestamp: f64,
+    pub timestamp: Option<f64>,
     pub message: MessageWrapper,
 }
 
@@ -159,6 +159,10 @@ pub fn parse_all_kimi_records(
             if msg.message.msg_type != "StatusUpdate" {
                 continue;
             }
+            let timestamp = match msg.timestamp {
+                Some(t) => t,
+                None => continue,
+            };
             let payload = match msg.message.payload {
                 Some(p) => p,
                 None => continue,
@@ -174,7 +178,7 @@ pub fn parse_all_kimi_records(
                 session_id: session_id.clone(),
                 agent_type: agent_type.to_string(),
                 agent_id: agent_id.clone(),
-                timestamp: msg.timestamp,
+                timestamp,
                 model: Some(default_model.clone()),
                 input_tokens: usage.input_other,
                 output_tokens: usage.output,

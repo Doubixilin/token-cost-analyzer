@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
-import type { OverviewStats, DistributionItem, TopNItem, TrendPoint } from "../types";
-import { formatNumber, formatCost } from "./formatter";
+import type { CostDisplaySettings, OverviewStats, DistributionItem, TopNItem, TrendPoint } from "../types";
+import { convertCostFromUsd, formatNumber, formatCost } from "./formatter";
 
 function s2ab(s: string) {
   const buf = new ArrayBuffer(s.length);
@@ -32,8 +32,9 @@ export function exportExcelReport(options: {
   sourceDist: DistributionItem[];
   topSessions: TopNItem[];
   trendData: TrendPoint[];
+  costDisplaySettings: CostDisplaySettings;
 }) {
-  const { overview, modelDist, sourceDist, topSessions, trendData } = options;
+  const { overview, modelDist, sourceDist, topSessions, trendData, costDisplaySettings } = options;
   const dateStr = new Date().toISOString().slice(0, 10);
   const wb = XLSX.utils.book_new();
 
@@ -41,7 +42,11 @@ export function exportExcelReport(options: {
   const overviewRows = [
     ["指标", "数值"],
     ["总请求数", formatNumber(overview?.total_requests || 0)],
-    ["总成本", formatCost(overview?.total_cost || 0)],
+    ["总成本", formatCost(overview?.total_cost || 0, costDisplaySettings)],
+    ["成本显示币种", costDisplaySettings.display_currency],
+    ["USD/CNY 汇率", costDisplaySettings.usd_to_cny_rate],
+    ["汇率日期", costDisplaySettings.exchange_rate_date],
+    ["说明", "成本仅估算，用于参考"],
     ["总 Token 数", formatNumber(overview?.total_tokens || 0)],
     ["Input Tokens", formatNumber(overview?.total_input || 0)],
     ["Output Tokens", formatNumber(overview?.total_output || 0)],
@@ -60,7 +65,7 @@ export function exportExcelReport(options: {
       item.name,
       formatNumber(item.value),
       `${((item.value / modelTotal) * 100).toFixed(1)}%`,
-      formatCost(item.cost),
+      formatCost(item.cost, costDisplaySettings),
     ]);
   });
   const wsModel = XLSX.utils.aoa_to_sheet(modelRows);
@@ -75,7 +80,7 @@ export function exportExcelReport(options: {
       item.name,
       formatNumber(item.value),
       `${((item.value / sourceTotal) * 100).toFixed(1)}%`,
-      formatCost(item.cost),
+      formatCost(item.cost, costDisplaySettings),
     ]);
   });
   const wsSource = XLSX.utils.aoa_to_sheet(sourceRows);
@@ -89,7 +94,7 @@ export function exportExcelReport(options: {
       String(idx + 1),
       item.name,
       formatNumber(item.value),
-      formatCost(item.cost),
+      formatCost(item.cost, costDisplaySettings),
     ]);
   });
   const wsTop = XLSX.utils.aoa_to_sheet(topRows);
@@ -108,7 +113,7 @@ export function exportExcelReport(options: {
         d.output_tokens,
         d.cache_read_tokens,
         d.cache_creation_tokens,
-        Number(d.cost.toFixed(4)),
+        Number(convertCostFromUsd(d.cost, costDisplaySettings).toFixed(4)),
       ]);
     });
     const wsTrend = XLSX.utils.aoa_to_sheet(trendRows);

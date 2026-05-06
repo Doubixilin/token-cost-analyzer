@@ -7,6 +7,7 @@ import { formatTokens, formatCost, getSourceLabel, getSourceStyle } from "../uti
 
 export default function Sessions() {
   const filters = useStatsStore((s) => s.filters);
+  const costDisplaySettings = useStatsStore((s) => s.costDisplaySettings);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [detail, setDetail] = useState<TokenRecord[]>([]);
@@ -89,7 +90,7 @@ export default function Sessions() {
                     {formatTokens(session.total_input + session.total_output + session.total_cache_read + session.total_cache_creation)}
                   </td>
                   <td className="px-4 py-3 text-right font-medium text-[var(--color-success)]">
-                    {formatCost(session.total_cost)}
+                    {formatCost(session.total_cost, costDisplaySettings)}
                   </td>
                   <td className="px-4 py-3 text-right text-[var(--color-text-secondary)]">
                     <button
@@ -155,7 +156,7 @@ export default function Sessions() {
                   <span className="text-blue-600">In: {formatTokens(record.input_tokens)}</span>
                   <span className="text-green-600">Out: {formatTokens(record.output_tokens)}</span>
                   <span className="text-orange-600">Cache: {formatTokens(record.cache_read_tokens + record.cache_creation_tokens)}</span>
-                  <span className="font-medium">{formatCost(record.cost_estimate)}</span>
+                  <span className="font-medium">{formatCost(record.cost_estimate, costDisplaySettings)}</span>
                 </div>
               </div>
             ))}

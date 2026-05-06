@@ -2,6 +2,8 @@ import ReactECharts from "echarts-for-react";
 import echarts from "../utils/echarts-setup";
 import type { TrendPoint } from "../types";
 import { useMemo } from "react";
+import { useStatsStore } from "../stores/useStatsStore";
+import { convertCostFromUsd } from "../utils/formatter";
 
 interface TrendChartProps {
   data: TrendPoint[];
@@ -9,8 +11,10 @@ interface TrendChartProps {
 }
 
 export default function TrendChart({ data = [], showCost = true }: TrendChartProps) {
+  const costDisplaySettings = useStatsStore((s) => s.costDisplaySettings);
   const option = useMemo(() => {
     const dates = data.map((d) => d.date);
+    const symbol = costDisplaySettings.display_currency === "CNY" ? "¥" : "$";
     return {
       tooltip: {
         trigger: "axis",
@@ -49,11 +53,11 @@ export default function TrendChart({ data = [], showCost = true }: TrendChartPro
         },
         {
           type: "value",
-          name: "成本 (¥)",
+          name: `成本 (${costDisplaySettings.display_currency})`,
           position: "right",
           show: showCost,
           axisLabel: {
-            formatter: "¥{value}",
+            formatter: (value: number) => `${symbol}${value}`,
           },
         },
       ],
@@ -97,7 +101,7 @@ export default function TrendChart({ data = [], showCost = true }: TrendChartPro
                 type: "line",
                 yAxisIndex: 1,
                 smooth: true,
-                data: data.map((d) => Number(d.cost.toFixed(4))),
+                data: data.map((d) => Number(convertCostFromUsd(d.cost, costDisplaySettings).toFixed(4))),
                 itemStyle: { color: "#ef4444" },
                 lineStyle: { type: "dashed" as const, width: 2 },
               },
@@ -105,7 +109,7 @@ export default function TrendChart({ data = [], showCost = true }: TrendChartPro
           : []),
       ],
     };
-  }, [data, showCost]);
+  }, [data, showCost, costDisplaySettings]);
 
   if (!data || data.length === 0) {
     return (

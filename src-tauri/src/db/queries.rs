@@ -84,7 +84,7 @@ pub fn get_overview_stats(conn: &Connection, filters: &FilterParams) -> Result<O
             total_output: row.get::<_, Option<i64>>(4)?.unwrap_or(0),
             total_cache_read: row.get::<_, Option<i64>>(5)?.unwrap_or(0),
             total_cache_creation: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
-            currency: "CNY".to_string(),
+            currency: "USD".to_string(),
         })
     })?;
     Ok(row)

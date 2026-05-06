@@ -1,12 +1,16 @@
 import { create } from "zustand";
-import type { OverviewStats, TrendPoint, DistributionItem, TopNItem, WidgetConfig } from "../types";
+import type { CostDisplaySettings, OverviewStats, TrendPoint, DistributionItem, TopNItem, WidgetConfig } from "../types";
 import { saveWidgetConfig, loadWidgetConfig } from "../api/tauriCommands";
+import { getCostDisplaySettings } from "../utils/formatter";
 
 const DEFAULT_CONFIG: WidgetConfig = {
   locked: false,
   pinned_to_desktop: false,
   selected_modules: ["overview", "trend", "source_split"],
   layout: "vertical",
+  background_mode: "solid",
+  background_opacity: 0.88,
+  resizable: false,
   width: 320,
   height: 440,
   x: null,
@@ -29,6 +33,7 @@ interface WidgetState {
   isLoading: boolean;
   refreshVersion: number;
   showSettings: boolean;
+  costDisplaySettings: CostDisplaySettings;
 
   setConfig: (partial: Partial<WidgetConfig>) => void;
   setOverview: (data: OverviewStats) => void;
@@ -40,6 +45,7 @@ interface WidgetState {
   setLoading: (v: boolean) => void;
   bumpRefresh: () => void;
   toggleSettings: () => void;
+  loadCostDisplaySettings: () => void;
   loadConfig: () => Promise<void>;
   saveConfig: () => Promise<void>;
 }
@@ -57,6 +63,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => {
   isLoading: false,
   refreshVersion: 0,
   showSettings: false,
+  costDisplaySettings: getCostDisplaySettings(),
 
   setConfig: (partial) => {
     set((s) => ({ config: { ...s.config, ...partial } }));
@@ -73,6 +80,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => {
   setLoading: (v) => set({ isLoading: v }),
   bumpRefresh: () => set((s) => ({ refreshVersion: s.refreshVersion + 1 })),
   toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
+  loadCostDisplaySettings: () => set({ costDisplaySettings: getCostDisplaySettings() }),
 
   loadConfig: async () => {
     try {

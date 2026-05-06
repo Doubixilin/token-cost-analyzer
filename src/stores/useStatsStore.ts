@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import type { OverviewStats, FilterParams, TrendPoint } from "../types";
+import type { CostDisplaySettings, OverviewStats, FilterParams, TrendPoint } from "../types";
+import { getCostDisplaySettings, saveCostDisplaySettings } from "../utils/formatter";
 
 type Theme = "light" | "dark";
 
@@ -33,6 +34,7 @@ interface StatsState {
   availableModels: string[];
   availableProjects: string[];
   theme: Theme;
+  costDisplaySettings: CostDisplaySettings;
   refreshVersion: number;
   setFilters: (filters: Partial<FilterParams>) => void;
   setOverview: (overview: OverviewStats) => void;
@@ -43,6 +45,7 @@ interface StatsState {
   setAvailableOptions: (sources: string[], models: string[], projects: string[]) => void;
   resetFilters: () => void;
   setTheme: (theme: Theme) => void;
+  setCostDisplaySettings: (settings: CostDisplaySettings) => void;
   notifyRefresh: () => void;
 }
 
@@ -57,6 +60,7 @@ const defaultFilters: FilterParams = {
 
 const initialTheme = getInitialTheme();
 applyTheme(initialTheme);
+const initialCostDisplaySettings = getCostDisplaySettings();
 
 export const useStatsStore = create<StatsState>((set) => ({
   filters: { ...defaultFilters },
@@ -69,6 +73,7 @@ export const useStatsStore = create<StatsState>((set) => ({
   availableModels: [],
   availableProjects: [],
   theme: initialTheme,
+  costDisplaySettings: initialCostDisplaySettings,
   refreshVersion: 0,
   setFilters: (filters) => set((state) => ({ filters: { ...state.filters, ...filters } })),
   setOverview: (overview) => set({ overview }),
@@ -82,6 +87,10 @@ export const useStatsStore = create<StatsState>((set) => ({
   setTheme: (theme) => {
     applyTheme(theme);
     set({ theme });
+  },
+  setCostDisplaySettings: (costDisplaySettings) => {
+    saveCostDisplaySettings(costDisplaySettings);
+    set({ costDisplaySettings });
   },
   notifyRefresh: () => set((state) => ({ refreshVersion: state.refreshVersion + 1 })),
 }));

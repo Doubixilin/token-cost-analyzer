@@ -77,6 +77,15 @@ export interface ModelPricing {
   currency: string;
 }
 
+export type DisplayCurrency = "CNY" | "USD";
+
+export interface CostDisplaySettings {
+  display_currency: DisplayCurrency;
+  usd_to_cny_rate: number;
+  exchange_rate_date: string;
+  exchange_rate_note: string;
+}
+
 export interface FilterParams {
   start_time: number | null;
   end_time: number | null;
@@ -104,6 +113,9 @@ export interface WidgetConfig {
   pinned_to_desktop: boolean;
   selected_modules: string[];
   layout: "vertical" | "grid";
+  background_mode: "solid" | "glass";
+  background_opacity: number;
+  resizable: boolean;
   width: number;
   height: number;
   x: number | null;

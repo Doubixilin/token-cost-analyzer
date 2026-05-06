@@ -304,7 +304,7 @@ fn ensure_all_models_priced(conn: &mut Connection) -> Result<(), rusqlite::Error
     for model in models {
         // Use unknown model defaults (2.0/8.0/0.2/2.0) instead of zero prices
         conn.execute(
-            "INSERT INTO model_pricing (model, input_price, output_price, cache_read_price, cache_creation_price, currency) VALUES (?1, 2.0, 8.0, 0.2, 2.0, 'CNY')",
+            "INSERT INTO model_pricing (model, input_price, output_price, cache_read_price, cache_creation_price, currency) VALUES (?1, 2.0, 8.0, 0.2, 2.0, 'USD')",
             [&model],
         )?;
     }
@@ -491,7 +491,7 @@ fn parse_selected_claude_files(
             let usage = match inner.usage { Some(u) => u, None => continue };
             let timestamp = msg.timestamp.as_ref()
                 .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-                .map(|dt| dt.timestamp() as f64)
+                .map(|dt| dt.timestamp_millis() as f64 / 1000.0)
                 .unwrap_or(0.0);
 
             all_records.push(TokenRecord {

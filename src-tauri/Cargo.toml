@@ -1,6 +1,6 @@
 [package]
 name = "token-cost-analyzer"
-version = "0.3.2"
+version = "0.3.3"
 description = "AI Coding Assistant Token Cost Analyzer"
 authors = ["Doubixilin"]
 edition = "2021"
@@ -37,4 +37,3 @@ url = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
-

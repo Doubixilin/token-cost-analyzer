@@ -52,7 +52,9 @@ pub fn find_claude_projects() -> Option<PathBuf> {
 
 fn parse_iso_timestamp(ts: &str) -> Option<f64> {
     // Parse ISO 8601 like "2026-04-23T23:17:10.770Z"
-    chrono::DateTime::parse_from_rfc3339(ts).ok().map(|dt| dt.timestamp() as f64)
+    chrono::DateTime::parse_from_rfc3339(ts)
+        .ok()
+        .map(|dt| dt.timestamp_millis() as f64 / 1000.0)
 }
 
 pub fn parse_all_claude_records(

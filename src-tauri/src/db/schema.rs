@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, OptionalExtension, Result};
 
 pub fn create_tables(conn: &Connection) -> Result<()> {
     conn.execute_batch(
@@ -57,6 +57,11 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             file_path TEXT PRIMARY KEY,
             last_modified INTEGER NOT NULL,
             record_count INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );
         "#,
     )?;
@@ -123,6 +128,37 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+pub fn run_data_migrations(conn: &Connection) -> Result<()> {
+    let codex_parser_version: Option<String> = conn
+        .query_row(
+            "SELECT value FROM app_metadata WHERE key = 'codex_parser_version'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    if codex_parser_version.as_deref() != Some("2") {
+        eprintln!("[migration] Codex parser changed; clearing Codex records for re-sync...");
+        conn.execute("DELETE FROM token_records WHERE source = 'codex'", [])?;
+        conn.execute("DELETE FROM session_summary WHERE source = 'codex'", [])?;
+        conn.execute(
+            "DELETE FROM sync_state WHERE file_path LIKE '%codex%' AND file_path LIKE '%sessions%'",
+            [],
+        )?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('codex_parser_version', '2')",
+            [],
+        )?;
+    }
+
+    conn.execute(
+        "UPDATE model_pricing SET currency = 'USD' WHERE currency IS NULL OR currency = 'CNY'",
+        [],
+    )?;
+
+    Ok(())
+}
+
 pub fn init_default_pricing(conn: &Connection) -> Result<()> {
     let defaults: Vec<(&str, f64, f64, f64, f64)> = vec![
         // --- Claude ---
@@ -173,7 +209,7 @@ pub fn init_default_pricing(conn: &Connection) -> Result<()> {
         // Insert new models with defaults; update existing zero-priced models
         conn.execute(
             "INSERT INTO model_pricing (model, input_price, output_price, cache_read_price, cache_creation_price, currency)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'CNY')
+             VALUES (?1, ?2, ?3, ?4, ?5, 'USD')
              ON CONFLICT(model) DO UPDATE SET
                input_price = excluded.input_price,
                output_price = excluded.output_price,

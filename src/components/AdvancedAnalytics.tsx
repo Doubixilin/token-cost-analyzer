@@ -10,7 +10,7 @@ import {
   getSankeyData,
   getDistribution,
 } from "../api/tauriCommands";
-import { formatTokens } from "../utils/formatter";
+import { convertCostFromUsd, formatTokens } from "../utils/formatter";
 import { getChartColors } from "../utils/chartColors";
 
 // Extracted to module level to avoid React re-mounting on every parent render
@@ -24,7 +24,9 @@ export default function AdvancedAnalytics() {
   const filters = useStatsStore((s) => s.filters);
   const refreshVersion = useStatsStore((s) => s.refreshVersion);
   const theme = useStatsStore((s) => s.theme);
+  const costDisplaySettings = useStatsStore((s) => s.costDisplaySettings);
   const cc = getChartColors(theme);
+  const costSymbol = costDisplaySettings.display_currency === "CNY" ? "¥" : "$";
   const [hourly, setHourly] = useState<{ hour: number; tokens: number; requests: number }[]>([]);
   const [modelTrend, setModelTrend] = useState<{ date: string; model: string; tokens: number }[]>([]);
   const [cumulative, setCumulative] = useState<{ date: string; cost: number }[]>([]);
@@ -64,7 +66,7 @@ export default function AdvancedAnalytics() {
       symbolSize: (data: number[]) => Math.max(4, Math.min(20, Math.sqrt(data[2]) / 100)),
       data: scatter
         .filter((d) => d.model === model)
-        .map((d) => [d.input, d.output, d.input + d.output, d.cost]),
+        .map((d) => [d.input, d.output, d.input + d.output, convertCostFromUsd(d.cost, costDisplaySettings)]),
       itemStyle: { color: colors[i % colors.length] },
     }));
     return {
@@ -72,7 +74,7 @@ export default function AdvancedAnalytics() {
       tooltip: {
         trigger: "item",
         formatter: (p: any) =>
-          `${p.seriesName}<br/>Input: ${formatTokens(p.data[0])}<br/>Output: ${formatTokens(p.data[1])}<br/>Total: ${formatTokens(p.data[2])}<br/>Cost: ¥${p.data[3].toFixed(4)}`,
+          `${p.seriesName}<br/>Input: ${formatTokens(p.data[0])}<br/>Output: ${formatTokens(p.data[1])}<br/>Total: ${formatTokens(p.data[2])}<br/>Cost: ${costSymbol}${p.data[3].toFixed(4)}`,
       },
       legend: { data: models, bottom: 0, type: "scroll" },
       grid: { left: "3%", right: "4%", bottom: "15%", top: "15%", containLabel: true },
@@ -90,7 +92,7 @@ export default function AdvancedAnalytics() {
       },
       series,
     };
-  }, [scatter, cc.textSecondary, cc.border]);
+  }, [scatter, cc.textSecondary, cc.border, costDisplaySettings, costSymbol]);
 
   // B1. Hourly Distribution
   const hourlyOption = useMemo(() => {
@@ -160,15 +162,15 @@ export default function AdvancedAnalytics() {
   const cumulativeOption = useMemo(() => {
     let acc = 0;
     const data = cumulative.map((d) => {
-      acc += d.cost;
+      acc += convertCostFromUsd(d.cost, costDisplaySettings);
       return [d.date, Number(acc.toFixed(4))];
     });
     return {
       title: { text: "累计成本曲线", left: "center", textStyle: { fontSize: 14 } },
-      tooltip: { trigger: "axis", formatter: (p: any) => `${p.data[0]}<br/>累计成本: ¥${p.data[1]}` },
+      tooltip: { trigger: "axis", formatter: (p: any) => `${p.data[0]}<br/>累计成本: ${costSymbol}${Number(p.data[1]).toFixed(4)}` },
       grid: { left: "3%", right: "4%", bottom: "10%", top: "15%", containLabel: true },
       xAxis: { type: "category", data: cumulative.map((d) => d.date), axisLabel: { color: cc.textSecondary } },
-      yAxis: { type: "value", name: "Cost (¥)", axisLabel: { formatter: "¥{value}" } },
+      yAxis: { type: "value", name: `Cost (${costDisplaySettings.display_currency})`, axisLabel: { formatter: (value: number) => `${costSymbol}${value}` } },
       series: [
         {
           type: "line",
@@ -180,7 +182,7 @@ export default function AdvancedAnalytics() {
         },
       ],
     };
-  }, [cumulative, cc.textSecondary]);
+  }, [cumulative, cc.textSecondary, costDisplaySettings, costSymbol]);
 
   // C. Sankey
   const sankeyOption = useMemo(() => {

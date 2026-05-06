@@ -1,144 +1,179 @@
 # Token Cost Analyzer
 
-本地 AI 编码助手 Token 消耗统计与分析桌面应用。支持 **Kimi Code**、**Claude Code** 和 **Codex** 的 Token 使用记录自动读取、成本估算与可视化分析。
+![Token Cost Analyzer overview poster](docs/assets/xiaohongshu/01-overview.png)
+
+**Token Cost Analyzer** is a free and open-source desktop app for tracking AI coding assistant token usage and estimated cost. It reads local session logs from **Kimi Code**, **Claude Code**, and **Codex**, then turns them into dashboards, charts, exportable reports, and a desktop floating widget.
+
+**开源、免费、本地优先的 AI Coding Token 成本分析工具。** 支持读取 **Kimi Code**、**Claude Code**、**Codex** 本地会话日志，自动统计 Token 用量、缓存命中、成本估算、趋势图表、导出报告，并提供桌面悬浮小组件。
+
+> Cost numbers are estimates for reference only. Actual billing depends on each provider's invoice and pricing rules.
+>
+> 成本仅为估算值，用于参考；实际费用请以各平台账单和官方定价为准。
 
 ---
 
-## 支持的 AI 工具
+## Highlights / 功能特点
 
-| 工具 | 数据来源 | 数据格式 |
-|------|---------|---------|
-| **Kimi Code** | `~/.kimi/sessions/wire.jsonl` | JSONL，`StatusUpdate` 事件 |
-| **Claude Code** | `~/.claude/projects/*.jsonl` | JSONL，`assistant` 消息 usage |
-| **Codex** | `~/.codex/sessions/**/rollout-*.jsonl` | JSONL，事件流（`session_meta` → `turn_context` → `token_count`） |
-
-> 应用启动后自动扫描上述目录，基于文件修改时间实现**增量同步**，只处理新增或变更的会话文件。
-
----
-
-## 功能特性
-
-### 核心统计
-- 📊 **总览仪表盘** — 总请求数、总成本、总 Token、缓存 Token 等核心指标
-- 📈 **趋势分析** — 日/周/月 Token 消耗趋势折线图（堆叠面积 + 双 Y 轴）
-- 🥧 **分布图表** — 模型分布、工具分布、代理类型分布饼图
-- 🔥 **活动热力图** — GitHub 风格的每日消耗热力图
-
-### 会话管理
-- 📁 **会话浏览器** — 按时间倒序浏览所有会话，支持分页
-- 🔍 **多维度筛选** — 按时间范围（今天/7天/30天/90天）、工具来源、模型、项目路径、代理类型筛选
-- 📝 **会话详情** — 查看单条会话的逐条 Token 记录（输入 / 输出 / 缓存 / 成本）
-
-### 高级分析
-- 📉 **桑基图** — 工具 → 模型的 Token 流向
-- 🎯 **Top-N 排行** — 最消耗 Token 的会话、模型、项目
-- 💰 **累计成本曲线** — 随时间累积的成本趋势
-- 🔬 **散点图** — 输入 vs 输出 Token 分布
-- 🕐 **时段分布** — 24 小时使用频率分布
-
-### 数据导出
-- 📤 支持导出为 **CSV**、**JSON**、**Excel** 格式
-- 🔄 一键同步最新数据
-
-### 桌面小组件
-- 🪟 透明悬浮窗，实时显示核心指标
-- 📌 支持钉入桌面（Windows）
-- 🌓 支持暗黑模式
+- **Local privacy first / 本地隐私优先**: reads local logs and stores analysis in local SQLite. No cloud upload, no external account, no telemetry.
+- **Multi-tool support / 多工具支持**: Kimi Code, Claude Code, and Codex.
+- **Accurate incremental sync / 增量同步**: scans changed session files and deduplicates repeated Codex token status events.
+- **Cost display / 成本显示**: model prices are maintained in USD per 1M tokens; the UI defaults to CNY display and can switch to USD. The USD/CNY exchange rate is editable in Settings.
+- **Dashboard and analytics / 仪表盘与分析视图**: token totals, cache tokens, model/source distribution, trend charts, heatmap, scatter plot, cumulative cost, Sankey flow, and Top-N ranking.
+- **Floating widget / 桌面小组件**: transparent/glass mode, dark mode, resizable mode, draggable floating window, and desktop pinning on Windows.
+- **Export / 导出**: CSV, JSON, and Excel analysis report.
+- **Free and open source / 开源免费**: MIT licensed.
 
 ---
 
-## 技术栈
+## Screenshots / 截图
 
-- **桌面框架**: [Tauri v2](https://tauri.app/) (Rust)
-- **前端**: React 19 + TypeScript + Vite 7
-- **样式**: TailwindCSS v4
-- **图表**: ECharts 6（按需导入）
-- **状态管理**: Zustand
-- **数据库**: SQLite (rusqlite)
-- **文件遍历**: walkdir
+| Dashboard / 仪表盘 | Floating Widget / 小组件 |
+|---|---|
+| ![Dashboard trend](docs/assets/screenshots/dashboard-trend-light.png) | ![Widget dark](docs/assets/screenshots/widget-compact-dark.png) |
+
+Xiaohongshu / 小红书 promo cards:
+
+| Overview | Features | Technical Design |
+|---|---|---|
+| ![Overview promo](docs/assets/xiaohongshu/01-overview.png) | ![Feature promo](docs/assets/xiaohongshu/02-features.png) | ![Architecture promo](docs/assets/xiaohongshu/03-architecture.png) |
+
+| Real UI | GitHub / Install |
+|---|---|
+| ![Real UI promo](docs/assets/xiaohongshu/04-real-ui.png) | ![GitHub install promo](docs/assets/xiaohongshu/05-github-install.png) |
 
 ---
 
-## 下载与安装
+## Download / 下载
 
-### Windows 便携版
+Portable Windows build:
 
-从 [Releases](https://github.com/Doubixilin/token-cost-analyzer/releases) 页面下载 `token-cost-analyzer.exe`，双击即可运行。
+- [`releases/token-cost-analyzer-windows.exe`](releases/token-cost-analyzer-windows.exe)
+- Latest version / 当前最新版本: **v0.3.3**
+- Repository / 远程仓库: <https://github.com/Doubixilin/token-cost-analyzer>
 
-### 从源码构建
+Or download from the GitHub Releases page if a packaged release is published:
+
+- <https://github.com/Doubixilin/token-cost-analyzer/releases>
+
+---
+
+## Supported Data Sources / 支持的数据源
+
+| Tool | Local source | Parsed data |
+|---|---|---|
+| Kimi Code | `~/.kimi/sessions/**/wire.jsonl` | `StatusUpdate` token usage |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | assistant message `usage` |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` | `session_meta`, `turn_context`, `token_count` |
+
+The app reads local JSONL files, writes normalized records to SQLite, and rebuilds summaries after sync.
+
+应用读取本地 JSONL 日志，将标准化后的记录写入 SQLite，并在同步后重建会话汇总数据。
+
+---
+
+## Technical Design / 技术方案
+
+```text
+Local AI tool logs
+  -> Rust parsers
+  -> SQLite token_records / session_summary / model_pricing
+  -> React + ECharts dashboard
+  -> CSV / JSON / Excel export + desktop widget
+```
+
+- **Desktop shell**: Tauri 2 + Rust
+- **Frontend**: React 19 + TypeScript + Vite 7
+- **Charts**: ECharts 6
+- **State**: Zustand
+- **Database**: SQLite via `rusqlite`
+- **Widget**: Tauri Webview window with transparent/glass styling and Windows desktop pinning helpers
+
+Key implementation notes:
+
+- Codex parser uses `total_token_usage` signatures to skip repeated status events.
+- Timestamps preserve milliseconds to reduce accidental duplicate merging.
+- Model pricing is stored in USD per 1M tokens; display currency is a UI preference.
+- Cost display defaults to CNY with editable `USD/CNY` exchange rate and date.
+
+---
+
+## Privacy / 隐私保护
+
+Token Cost Analyzer is designed as a local-first tool:
+
+- No backend service is required.
+- No session logs are uploaded.
+- No project paths or usage summaries are sent to any third party by the app.
+- The database is stored locally in the app data directory.
+- Exports are generated locally in your browser/WebView.
+
+本项目默认本地运行、本地分析、本地存储：不需要账号、不需要云端服务、不上传日志、不遥测。项目路径、会话摘要、Token 记录和成本估算都保存在本机 SQLite 中。
+
+---
+
+## Usage / 使用方法
+
+1. Install and run the app.
+2. Click **Refresh / Sync** to scan local Kimi Code, Claude Code, and Codex logs.
+3. Use filters to review usage by time range, source, model, project, or agent type.
+4. Open **Settings** to adjust model prices, display currency, USD/CNY exchange rate, and floating widget behavior.
+5. Use **Analytics** to export an Excel report, or use Dashboard export for CSV/JSON.
+6. Enable the floating widget for quick desktop monitoring.
+
+---
+
+## Build From Source / 从源码构建
+
+Requirements:
+
+- Node.js
+- Rust
+- Tauri prerequisites for your OS
 
 ```bash
-# 克隆仓库
 git clone https://github.com/Doubixilin/token-cost-analyzer.git
 cd token-cost-analyzer
-
-# 安装依赖
 npm install
 
-# 开发模式（热重载）
+# Development
 npm run tauri dev
 
-# 构建 Release（生成便携版 exe）
+# Portable release executable
 npm run tauri build -- --no-bundle
 
-# 完整打包（NSIS 安装程序）
+# Full bundle, such as NSIS on Windows
 npm run tauri build
 ```
 
-> ⚠️ **注意**: 必须使用 `npm run tauri build` 构建，不能直接运行 `cargo build --release`，否则缺少 `custom-protocol` feature 会导致白屏。
+Do not run `cargo build --release` directly for the desktop app; Tauri needs the frontend build and app configuration.
 
 ---
 
-## 使用说明
+## Local Data Location / 本地数据位置
 
-1. **首次启动** — 应用会自动扫描本地已安装的 Kimi Code / Claude Code / Codex 历史记录
-2. **点击同步** — 点击右上角「同步数据」按钮读取最新记录
-3. **查看统计** — 在仪表盘、分析、会话浏览器等页面查看多维度统计
-4. **筛选数据** — 使用筛选器按时间、工具、模型、项目等维度过滤
-5. **配置定价** — 在设置页调整各模型的单价（默认使用参考定价）
-
----
-
-## 定价说明
-
-应用内置了各模型的参考定价（单位：元/百万 Token），用于估算成本：
-
-| 模型系列 | 输入 | 输出 | 缓存读取 | 缓存创建 |
-|---------|------|------|---------|---------|
-| Claude Opus 4 | ¥15.0 | ¥75.0 | ¥1.5 | ¥18.75 |
-| Claude Sonnet 4 | ¥3.0 | ¥15.0 | ¥0.3 | ¥3.75 |
-| Kimi K2.5 | ¥2.0 | ¥8.0 | ¥0.2 | ¥2.0 |
-| GPT-4o | ¥2.5 | ¥10.0 | ¥1.25 | ¥2.5 |
-| GPT-5.4 / Codex High | ¥5.0 | ¥20.0 | ¥2.5 | ¥5.0 |
-| DeepSeek V4 Pro | ¥0.27 | ¥1.1 | ¥0.07 | ¥0.27 |
-
-> 定价仅供参考，实际费用以各平台账单为准。可在设置页手动修改。
-
----
-
-## 数据存储
-
-| 平台 | 数据位置 |
-|------|---------|
+| Platform | SQLite path |
+|---|---|
 | Windows | `%APPDATA%/com.asus.token-cost-analyzer/token_analyzer.db` |
 | macOS | `~/Library/Application Support/com.asus.token-cost-analyzer/token_analyzer.db` |
 
-所有数据均存储在本地 SQLite 数据库中，不会上传至任何服务器。
+---
+
+## Version / 版本
+
+Current version: **v0.3.3**
+
+Main updates:
+
+- Desktop floating widget transparency, dark mode, resizable mode, and position preservation.
+- CNY/USD display settings with editable exchange rate.
+- Codex token count deduplication and millisecond timestamp precision.
+- Excel report consistency improvements.
+- Bilingual README and 小红书 promotional assets.
 
 ---
 
-## 版本历史
+## License / 许可
 
-| 版本 | 日期 | 主要更新 |
-|------|------|---------|
-| v0.3.2 | 2026-05-02 | ✅ 新增 Codex Token 统计支持 |
-| v0.3.1 | 2026-05-02 | 移除透明度功能（WebView2 限制），货币统一为 CNY |
-| v0.3.0 | 2026-05-01 | 全面代码审查修复，Widget 桌面钉入重构 |
-| v0.2.0 | 2026-04-29 | 增量同步、数据准确性修复、ECharts 按需导入 |
-| v0.1.0 | 2026-04-28 | 初始版本，支持 Kimi + Claude 基础统计 |
+MIT License. Free for personal and commercial use.
 
----
-
-## 许可证
-
-MIT License
+MIT 许可。可免费用于个人和商业场景。

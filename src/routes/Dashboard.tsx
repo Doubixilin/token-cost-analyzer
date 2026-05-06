@@ -24,6 +24,7 @@ export default function Dashboard() {
   const refreshVersion = useStatsStore((s) => s.refreshVersion);
   const overview = useStatsStore((s) => s.overview);
   const trendData = useStatsStore((s) => s.trendData);
+  const costDisplaySettings = useStatsStore((s) => s.costDisplaySettings);
   const isLoading = useStatsStore((s) => s.isLoading);
   const isSyncing = useStatsStore((s) => s.isSyncing);
   const setOverview = useStatsStore((s) => s.setOverview);
@@ -165,7 +166,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="总成本"
-          value={formatCost(overview?.total_cost || 0)}
+          value={formatCost(overview?.total_cost || 0, costDisplaySettings)}
           icon={DollarSign}
           color="#10b981"
         />

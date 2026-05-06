@@ -71,8 +71,8 @@ export const toggleWidget = (): Promise<void> =>
 export const setWidgetIgnoreCursor = (label: string, ignore: boolean): Promise<void> =>
   invoke("set_widget_ignore_cursor", { label, ignore });
 
-export const saveWidgetConfig = (config: WidgetConfig): Promise<void> =>
-  invoke("save_widget_config", { config });
+export const saveWidgetConfig = (config: WidgetConfig, preservePosition = true): Promise<void> =>
+  invoke("save_widget_config", { config, preserve_position: preservePosition });
 
 export const loadWidgetConfig = (): Promise<WidgetConfig> =>
   invoke("load_widget_config");

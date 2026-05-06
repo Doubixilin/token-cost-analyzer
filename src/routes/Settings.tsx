@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   getModelPricing,
   setModelPricing,
@@ -8,9 +8,11 @@ import {
   embedWidgetToDesktop,
   unpinWidgetFromDesktop,
 } from "../api/tauriCommands";
-import type { ModelPricing, WidgetConfig, TimePeriod } from "../types";
+import type { CostDisplaySettings, ModelPricing, WidgetConfig, TimePeriod } from "../types";
 import { Moon, Sun, Layers, RotateCw, Eye, MonitorSmartphone } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
+import { emit } from "@tauri-apps/api/event";
+import { normalizeCostDisplaySettings } from "../utils/formatter";
 
 type PriceField = "input_price" | "output_price" | "cache_read_price" | "cache_creation_price";
 
@@ -20,6 +22,8 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const theme = useStatsStore((s) => s.theme);
   const setTheme = useStatsStore((s) => s.setTheme);
+  const costDisplaySettings = useStatsStore((s) => s.costDisplaySettings);
+  const setCostDisplaySettings = useStatsStore((s) => s.setCostDisplaySettings);
   const [newModel, setNewModel] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -29,8 +33,11 @@ export default function Settings() {
     pinned_to_desktop: false,
     selected_modules: ["overview", "trend", "source_split"],
     layout: "vertical",
-    width: 360,
-    height: 480,
+    background_mode: "solid",
+    background_opacity: 0.88,
+    resizable: false,
+    width: 320,
+    height: 440,
     x: null,
     y: null,
     theme: "auto",
@@ -39,6 +46,7 @@ export default function Settings() {
   });
   const [widgetSaved, setWidgetSaved] = useState(false);
   const [widgetError, setWidgetError] = useState<string | null>(null);
+  const widgetSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     loadWidgetConfig()
@@ -46,13 +54,43 @@ export default function Settings() {
       .catch((e) => console.error("[Settings] loadWidgetConfig failed:", e));
   }, []);
 
-  const updateWidget = (partial: Partial<WidgetConfig>) => {
-    setWidgetConfig((prev) => (prev ? { ...prev, ...partial } : prev));
+  useEffect(() => {
+    return () => {
+      if (widgetSaveTimer.current) {
+        clearTimeout(widgetSaveTimer.current);
+      }
+    };
+  }, []);
+
+  const scheduleWidgetSave = (next: WidgetConfig, preservePosition = true) => {
+    if (widgetSaveTimer.current) {
+      clearTimeout(widgetSaveTimer.current);
+    }
+    widgetSaveTimer.current = setTimeout(async () => {
+      try {
+        await saveWidgetConfig(next, preservePosition);
+        setWidgetError(null);
+      } catch (e) {
+        setWidgetError("保存配置失败，请重试");
+        console.error(e);
+      }
+    }, 350);
+  };
+
+  const updateWidget = (partial: Partial<WidgetConfig>, preservePosition = true) => {
+    setWidgetConfig((prev) => {
+      const next = { ...prev, ...partial };
+      scheduleWidgetSave(next, preservePosition);
+      return next;
+    });
   };
 
   const handleSaveWidget = async () => {
     try {
-      await saveWidgetConfig(widgetConfig);
+      if (widgetSaveTimer.current) {
+        clearTimeout(widgetSaveTimer.current);
+      }
+      await saveWidgetConfig(widgetConfig, true);
       setWidgetSaved(true);
       setWidgetError(null);
       setTimeout(() => setWidgetSaved(false), 3000);
@@ -133,6 +171,12 @@ export default function Settings() {
     }
   };
 
+  const updateCostDisplaySettings = (partial: Partial<CostDisplaySettings>) => {
+    const next = normalizeCostDisplaySettings({ ...costDisplaySettings, ...partial });
+    setCostDisplaySettings(next);
+    emit("cost-display-settings-changed", next).catch(() => {});
+  };
+
   return (
     <div className="p-6 space-y-6">
       <h2 className="text-xl font-bold text-[var(--color-text)]">设置</h2>
@@ -140,7 +184,7 @@ export default function Settings() {
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold">模型单价配置</h3>
-          <span className="text-xs text-[var(--color-text-secondary)]">单位: $ / 1M tokens</span>
+          <span className="text-xs text-[var(--color-text-secondary)]">单位: USD / 1M tokens</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -242,6 +286,71 @@ export default function Settings() {
             </p>
           </div>
         )}
+      </div>
+
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold">成本显示</h3>
+          <span className="text-xs text-[var(--color-text-secondary)]">成本仅估算，用于参考</span>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm font-medium text-[var(--color-text)] mb-2">显示币种</p>
+            <div className="flex items-center gap-2">
+              {(["CNY", "USD"] as const).map((currency) => (
+                <button
+                  key={currency}
+                  onClick={() => updateCostDisplaySettings({ display_currency: currency })}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    costDisplaySettings.display_currency === currency
+                      ? "bg-[var(--color-primary)] text-white"
+                      : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600"
+                  }`}
+                >
+                  {currency === "CNY" ? "人民币 CNY" : "美元 USD"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block">
+              <span className="block text-sm font-medium text-[var(--color-text)] mb-1">USD/CNY 汇率</span>
+              <input
+                type="number"
+                min={0.0001}
+                step={0.0001}
+                value={costDisplaySettings.usd_to_cny_rate}
+                onChange={(e) => updateCostDisplaySettings({ usd_to_cny_rate: Number(e.target.value) })}
+                className="w-full px-3 py-2 rounded border border-[var(--color-border)] text-sm bg-[var(--color-surface)]"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-sm font-medium text-[var(--color-text)] mb-1">汇率日期</span>
+              <input
+                type="date"
+                value={costDisplaySettings.exchange_rate_date}
+                onChange={(e) => updateCostDisplaySettings({ exchange_rate_date: e.target.value })}
+                className="w-full px-3 py-2 rounded border border-[var(--color-border)] text-sm bg-[var(--color-surface)]"
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="block text-sm font-medium text-[var(--color-text)] mb-1">汇率说明</span>
+            <input
+              type="text"
+              value={costDisplaySettings.exchange_rate_note}
+              onChange={(e) => updateCostDisplaySettings({ exchange_rate_note: e.target.value })}
+              className="w-full px-3 py-2 rounded border border-[var(--color-border)] text-sm bg-[var(--color-surface)]"
+            />
+          </label>
+
+          <p className="text-xs leading-5 text-[var(--color-text-secondary)]">
+            模型单价按 USD / 1M tokens 维护；选择 CNY 时，会使用上方 USD/CNY 汇率换算展示。默认汇率为 1 USD = 6.8304 CNY，参考 2026-05-05 18:10 UTC 报价，在北京时间 2026-05-06 查看。
+          </p>
+        </div>
       </div>
 
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 shadow-sm">
@@ -424,6 +533,40 @@ export default function Settings() {
               </div>
             </div>
 
+            {/* Background */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-[var(--color-text)]">{"\u80cc\u666f\u6548\u679c"}</p>
+                <span className="text-xs text-[var(--color-text-secondary)]">
+                  {`${Math.round(widgetConfig.background_opacity * 100)}%`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                {(["solid", "glass"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => updateWidget({ background_mode: mode })}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      widgetConfig.background_mode === mode
+                        ? "bg-[var(--color-primary)] text-white"
+                        : "bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600"
+                    }`}
+                  >
+                    {mode === "solid" ? "\u5b9e\u4f53" : "\u534a\u900f\u660e"}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="range"
+                min={25}
+                max={100}
+                step={5}
+                value={Math.round(widgetConfig.background_opacity * 100)}
+                onChange={(e) => updateWidget({ background_mode: "glass", background_opacity: Number(e.target.value) / 100 })}
+                className="w-full accent-[var(--color-primary)]"
+              />
+            </div>
+
             {/* Position Lock */}
             <div className="flex items-center justify-between">
               <div>
@@ -477,14 +620,30 @@ export default function Settings() {
 
             {/* Size */}
             <div>
-              <p className="text-sm font-medium text-[var(--color-text)] mb-2">小组件尺寸</p>
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-sm font-medium text-[var(--color-text)]">小组件尺寸</p>
+                  <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">开启后可直接拖拽窗口边缘调整</p>
+                </div>
+                <button
+                  onClick={() => updateWidget({ resizable: !widgetConfig.resizable })}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                    widgetConfig.resizable ? "bg-[var(--color-primary)]" : "bg-gray-300 dark:bg-slate-600"
+                  }`}
+                  aria-label="手动调整大小"
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    widgetConfig.resizable ? "translate-x-5" : ""
+                  }`} />
+                </button>
+              </div>
               <div className="flex items-center gap-3 mb-2">
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-[var(--color-text-secondary)]">宽</span>
                   <input
-                    type="number" min={240} max={800} step={10}
+                    type="number" min={240} max={420} step={10}
                     value={Math.round(widgetConfig.width)}
-                    onChange={(e) => updateWidget({ width: Math.max(240, Math.min(800, Number(e.target.value) || 240)) })}
+                    onChange={(e) => updateWidget({ width: Math.max(240, Math.min(420, Number(e.target.value) || 240)) })}
                     className="w-20 text-center px-2 py-1 rounded border border-[var(--color-border)] text-sm"
                   />
                   <span className="text-xs text-[var(--color-text-secondary)]">px</span>
@@ -493,9 +652,9 @@ export default function Settings() {
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-[var(--color-text-secondary)]">高</span>
                   <input
-                    type="number" min={200} max={1200} step={10}
+                    type="number" min={200} max={600} step={10}
                     value={Math.round(widgetConfig.height)}
-                    onChange={(e) => updateWidget({ height: Math.max(200, Math.min(1200, Number(e.target.value) || 200)) })}
+                    onChange={(e) => updateWidget({ height: Math.max(200, Math.min(600, Number(e.target.value) || 200)) })}
                     className="w-20 text-center px-2 py-1 rounded border border-[var(--color-border)] text-sm"
                   />
                   <span className="text-xs text-[var(--color-text-secondary)]">px</span>
@@ -541,7 +700,20 @@ export default function Settings() {
               重置
             </button>
             <button
-              onClick={() => updateWidget({ x: null, y: null })}
+              onClick={async () => {
+                if (widgetSaveTimer.current) {
+                  clearTimeout(widgetSaveTimer.current);
+                }
+                const next = { ...widgetConfig, x: null, y: null };
+                setWidgetConfig(next);
+                try {
+                  await saveWidgetConfig(next, false);
+                  setWidgetError(null);
+                } catch (e) {
+                  setWidgetError("保存配置失败，请重试");
+                  console.error(e);
+                }
+              }}
               className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] transition-colors"
             >
               重置位置

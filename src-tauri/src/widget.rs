@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 static WIDGET_CREATING: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
@@ -15,6 +15,9 @@ pub struct WidgetConfig {
     pub pinned_to_desktop: bool,
     pub selected_modules: Vec<String>,
     pub layout: String,
+    pub background_mode: String,
+    pub background_opacity: f64,
+    pub resizable: bool,
     pub width: f64,
     pub height: f64,
     pub x: Option<f64>,
@@ -35,6 +38,9 @@ impl Default for WidgetConfig {
                 "source_split".into(),
             ],
             layout: "vertical".into(),
+            background_mode: "solid".into(),
+            background_opacity: 0.88,
+            resizable: false,
             width: 320.0,
             height: 440.0,
             x: None,
@@ -44,6 +50,185 @@ impl Default for WidgetConfig {
             time_period: "7d".into(),
         }
     }
+}
+
+const MIN_WIDGET_WIDTH: f64 = 240.0;
+const MAX_WIDGET_WIDTH: f64 = 420.0;
+const MIN_WIDGET_HEIGHT: f64 = 200.0;
+const MAX_WIDGET_HEIGHT: f64 = 600.0;
+const MAX_ABS_WIDGET_POSITION: f64 = 10000.0;
+const MIN_BACKGROUND_OPACITY: f64 = 0.25;
+const MAX_BACKGROUND_OPACITY: f64 = 1.0;
+const MIN_REFRESH_INTERVAL_SEC: u32 = 5;
+const DEFAULT_POSITION_MARGIN: f64 = 20.0;
+const ALLOWED_MODULES: &[&str] = &[
+    "overview",
+    "trend",
+    "source_split",
+    "model_dist",
+    "hourly_dist",
+    "top_projects",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WidgetPosition {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WidgetRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+pub fn normalize_widget_config(mut config: WidgetConfig) -> WidgetConfig {
+    let defaults = WidgetConfig::default();
+
+    if !config.width.is_finite()
+        || config.width < MIN_WIDGET_WIDTH
+        || config.width > MAX_WIDGET_WIDTH
+    {
+        config.width = defaults.width;
+    }
+
+    if !config.height.is_finite()
+        || config.height < MIN_WIDGET_HEIGHT
+        || config.height > MAX_WIDGET_HEIGHT
+    {
+        config.height = defaults.height;
+    }
+
+    if config.refresh_interval_sec > 0 && config.refresh_interval_sec < MIN_REFRESH_INTERVAL_SEC {
+        config.refresh_interval_sec = MIN_REFRESH_INTERVAL_SEC;
+    }
+
+    if !config.background_opacity.is_finite() {
+        config.background_opacity = defaults.background_opacity;
+    }
+    config.background_opacity = config
+        .background_opacity
+        .clamp(MIN_BACKGROUND_OPACITY, MAX_BACKGROUND_OPACITY);
+
+    match (config.x, config.y) {
+        (Some(x), Some(y))
+            if x.is_finite()
+                && y.is_finite()
+                && x.abs() <= MAX_ABS_WIDGET_POSITION
+                && y.abs() <= MAX_ABS_WIDGET_POSITION => {}
+        _ => {
+            config.x = None;
+            config.y = None;
+        }
+    }
+
+    config
+        .selected_modules
+        .retain(|module| ALLOWED_MODULES.contains(&module.as_str()));
+    if config.selected_modules.is_empty() {
+        config.selected_modules = vec!["overview".into()];
+    }
+
+    if !matches!(config.layout.as_str(), "vertical" | "grid") {
+        config.layout = defaults.layout;
+    }
+    if !matches!(config.background_mode.as_str(), "solid" | "glass") {
+        config.background_mode = defaults.background_mode;
+    }
+    if !matches!(config.theme.as_str(), "auto" | "light" | "dark") {
+        config.theme = defaults.theme;
+    }
+    if !matches!(config.time_period.as_str(), "today" | "7d" | "30d" | "all") {
+        config.time_period = defaults.time_period;
+    }
+
+    config
+}
+
+pub fn merge_widget_config_for_save(
+    mut incoming: WidgetConfig,
+    existing: Option<&WidgetConfig>,
+    preserve_position: bool,
+) -> WidgetConfig {
+    if preserve_position {
+        if let Some(existing) = existing {
+            incoming.x = existing.x;
+            incoming.y = existing.y;
+        }
+    }
+
+    normalize_widget_config(incoming)
+}
+
+pub fn clamp_widget_position_to_monitor(
+    position: WidgetPosition,
+    width: f64,
+    height: f64,
+    monitor: WidgetRect,
+) -> WidgetPosition {
+    let min_x = monitor.x + DEFAULT_POSITION_MARGIN;
+    let min_y = monitor.y + DEFAULT_POSITION_MARGIN;
+    let max_x = (monitor.x + monitor.width - width - DEFAULT_POSITION_MARGIN).max(min_x);
+    let max_y = (monitor.y + monitor.height - height - DEFAULT_POSITION_MARGIN).max(min_y);
+
+    WidgetPosition {
+        x: position.x.clamp(min_x, max_x),
+        y: position.y.clamp(min_y, max_y),
+    }
+}
+
+pub fn should_apply_native_widget_config(current: &WidgetConfig, next: &WidgetConfig) -> bool {
+    let current = normalize_widget_config(current.clone());
+    let next = normalize_widget_config(next.clone());
+
+    (current.width - next.width).abs() > f64::EPSILON
+        || (current.height - next.height).abs() > f64::EPSILON
+        || current.x != next.x
+        || current.y != next.y
+        || current.resizable != next.resizable
+        || current.pinned_to_desktop != next.pinned_to_desktop
+}
+
+fn monitor_rect(monitor: &tauri::Monitor) -> WidgetRect {
+    let pos = monitor.position();
+    let size = monitor.size();
+    WidgetRect {
+        x: pos.x as f64,
+        y: pos.y as f64,
+        width: size.width as f64,
+        height: size.height as f64,
+    }
+}
+
+fn default_widget_position(app: &tauri::AppHandle, width: f64, height: f64) -> Option<WidgetPosition> {
+    let main_win = app.get_webview_window("main")?;
+    let candidate = main_win
+        .outer_position()
+        .ok()
+        .map(|pos| {
+            let x = main_win
+                .inner_size()
+                .ok()
+                .map(|size| pos.x as f64 + size.width as f64 + DEFAULT_POSITION_MARGIN)
+                .unwrap_or(pos.x as f64 + 1420.0);
+            WidgetPosition {
+                x,
+                y: pos.y as f64,
+            }
+        })?;
+
+    let monitor = main_win
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| main_win.primary_monitor().ok().flatten());
+
+    monitor
+        .as_ref()
+        .map(|monitor| clamp_widget_position_to_monitor(candidate, width, height, monitor_rect(monitor)))
+        .or(Some(candidate))
 }
 
 fn config_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -61,18 +246,15 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
     eprintln!("[Widget] Creating widget window...");
-    let config = load_config_from_disk(app);
-    // Clamp size to prevent corrupted/full-screen dimensions from being used
-    let default_w = 320.0;
-    let default_h = 440.0;
-    let w = if config.width > 50.0 && config.width <= 600.0 { config.width } else { default_w };
-    let h = if config.height > 50.0 && config.height <= 800.0 { config.height } else { default_h };
+    let config = normalize_widget_config(load_config_from_disk(app));
+    let w = config.width;
+    let h = config.height;
     eprintln!("[Widget] Size: {}x{} (raw config: {}x{})", w, h, config.width, config.height);
 
     // In dev mode, use the devUrl directly to avoid Tauri's asset protocol
     // falling back to index.html for non-root HTML paths.
     // In production, use the asset protocol via WebviewUrl::App.
-    let widget_url = match &app.config().build.dev_url {
+    let widget_url = if cfg!(dev) { match &app.config().build.dev_url {
         Some(dev_url) => {
             let base = dev_url.as_str().trim_end_matches('/');
             let url: url::Url = format!("{}/widget.html", base)
@@ -81,35 +263,31 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
             WebviewUrl::External(url)
         }
         None => WebviewUrl::App("widget.html".into()),
+    }} else {
+        WebviewUrl::App("widget.html".into())
     };
 
     let mut builder = WebviewWindowBuilder::new(app, "widget", widget_url)
         .title("Token Widget")
         .inner_size(w, h)
-        .min_inner_size(280.0, 200.0)
-        .resizable(true)
         .decorations(false)
         .transparent(true)
-        .always_on_top(true)
+        .always_on_top(!config.pinned_to_desktop)
         .skip_taskbar(true)
         .shadow(false)
         .focused(false)
         .visible(false);
-
-    if let (Some(x), Some(y)) = (config.x, config.y) {
-        builder = builder.position(x, y);
+    builder = if config.resizable {
+        builder
+            .min_inner_size(MIN_WIDGET_WIDTH, MIN_WIDGET_HEIGHT)
+            .max_inner_size(MAX_WIDGET_WIDTH, MAX_WIDGET_HEIGHT)
+            .resizable(true)
     } else {
-        // Default: position to the right of the main window to avoid overlap
-        if let Some(main_win) = app.get_webview_window("main") {
-            if let Ok(pos) = main_win.outer_position() {
-                if let Ok(size) = main_win.inner_size() {
-                    builder = builder.position(pos.x as f64 + size.width as f64 + 20.0, pos.y as f64);
-                } else {
-                    builder = builder.position(pos.x as f64 + 1420.0, pos.y as f64);
-                }
-            }
-        }
-    }
+        builder
+            .min_inner_size(w, h)
+            .max_inner_size(w, h)
+            .resizable(false)
+    };
 
     let widget_win = match builder.build() {
         Ok(win) => win,
@@ -122,6 +300,11 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
 
     // Explicitly set size after build to prevent DWM from expanding the window
     let _ = widget_win.set_size(tauri::LogicalSize::new(w, h));
+    if let (Some(x), Some(y)) = (config.x, config.y) {
+        let _ = widget_win.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
+    } else if let Some(pos) = default_widget_position(app, w, h) {
+        let _ = widget_win.set_position(PhysicalPosition::new(pos.x.round() as i32, pos.y.round() as i32));
+    }
 
     // Explicitly ensure cursor events are NOT ignored.
     // On Windows with decorations(false) + Acrylic, the window may default to
@@ -161,7 +344,9 @@ fn create_widget_window(app: &tauri::AppHandle) -> Result<(), String> {
                     let w = size.width as f64;
                     let h = size.height as f64;
                     // Only save if within reasonable bounds (prevent corrupted full-screen dimensions)
-                    if w > 50.0 && w <= 600.0 && h > 50.0 && h <= 800.0 {
+                    if (MIN_WIDGET_WIDTH..=MAX_WIDGET_WIDTH).contains(&w)
+                        && (MIN_WIDGET_HEIGHT..=MAX_WIDGET_HEIGHT).contains(&h)
+                    {
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                             if sv.load(Ordering::SeqCst) == v {
@@ -197,8 +382,8 @@ pub fn toggle_widget(app: tauri::AppHandle) -> Result<(), String> {
         win.hide().map_err(|e| e.to_string())?;
     } else {
         eprintln!("[Widget] Showing widget");
-        win.show().map_err(|e| e.to_string())?;
-        win.set_ignore_cursor_events(false).map_err(|e| e.to_string())?;
+        let config = load_widget_config(app.clone())?;
+        apply_widget_config_to_existing_window(&app, &config, true)?;
         win.set_focus().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -213,10 +398,32 @@ pub fn set_widget_ignore_cursor(app: tauri::AppHandle, label: String, ignore: bo
 }
 
 #[tauri::command]
-pub fn save_widget_config(app: tauri::AppHandle, config: WidgetConfig) -> Result<(), String> {
-    let path = config_path(&app)?;
-    let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    fs::write(&path, json).map_err(|e| e.to_string())?;
+pub fn save_widget_config(
+    app: tauri::AppHandle,
+    config: WidgetConfig,
+    preserve_position: Option<bool>,
+) -> Result<(), String> {
+    let existing = load_config_from_disk(&app);
+    let mut existing_for_merge = existing.clone();
+    if preserve_position.unwrap_or(true) && existing_for_merge.x.is_none() && existing_for_merge.y.is_none() {
+        if let Some(win) = app.get_webview_window("widget") {
+            if win.is_visible().unwrap_or(false) {
+                if let Ok(pos) = win.outer_position() {
+                    existing_for_merge.x = Some(pos.x as f64);
+                    existing_for_merge.y = Some(pos.y as f64);
+                }
+            }
+        }
+    }
+    let config = merge_widget_config_for_save(
+        config,
+        Some(&existing_for_merge),
+        preserve_position.unwrap_or(true),
+    );
+    save_widget_config_internal(&app, &config)?;
+    if should_apply_native_widget_config(&existing, &config) {
+        apply_widget_config_to_existing_window(&app, &config, false)?;
+    }
     // Notify widget window to reload config
     let _ = app.emit("widget-config-changed", &config);
     Ok(())
@@ -224,7 +431,7 @@ pub fn save_widget_config(app: tauri::AppHandle, config: WidgetConfig) -> Result
 
 #[tauri::command]
 pub fn load_widget_config(app: tauri::AppHandle) -> Result<WidgetConfig, String> {
-    Ok(load_config_from_disk(&app))
+    Ok(normalize_widget_config(load_config_from_disk(&app)))
 }
 
 fn load_config_from_disk(app: &tauri::AppHandle) -> WidgetConfig {
@@ -232,7 +439,7 @@ fn load_config_from_disk(app: &tauri::AppHandle) -> WidgetConfig {
         Ok(path) if path.exists() => {
             match fs::read_to_string(&path) {
                 Ok(content) => match serde_json::from_str(&content) {
-                    Ok(config) => config,
+                    Ok(config) => normalize_widget_config(config),
                     Err(e) => {
                         eprintln!("[Widget] 配置文件 JSON 解析失败: {}, 使用默认配置", e);
                         WidgetConfig::default()
@@ -257,12 +464,65 @@ fn load_config_from_disk(app: &tauri::AppHandle) -> WidgetConfig {
 
 fn save_widget_config_internal(app: &tauri::AppHandle, config: &WidgetConfig) -> Result<(), String> {
     let path = config_path(app)?;
-    let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
+    let config = normalize_widget_config(config.clone());
+    let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())
+}
+
+fn apply_widget_config_to_existing_window(
+    app: &tauri::AppHandle,
+    config: &WidgetConfig,
+    show_if_hidden: bool,
+) -> Result<(), String> {
+    let Some(win) = app.get_webview_window("widget") else {
+        return Ok(());
+    };
+
+    let was_hidden = !win.is_visible().unwrap_or(false);
+    if show_if_hidden && was_hidden {
+        win.show().map_err(|e| e.to_string())?;
+    }
+
+    win.set_size(tauri::LogicalSize::new(config.width, config.height))
+        .map_err(|e| e.to_string())?;
+    if config.resizable {
+        let _ = win.set_min_size(Some(tauri::LogicalSize::new(
+            MIN_WIDGET_WIDTH,
+            MIN_WIDGET_HEIGHT,
+        )));
+        let _ = win.set_max_size(Some(tauri::LogicalSize::new(
+            MAX_WIDGET_WIDTH,
+            MAX_WIDGET_HEIGHT,
+        )));
+        let _ = win.set_resizable(true);
+    } else {
+        let logical_size = tauri::LogicalSize::new(config.width, config.height);
+        let _ = win.set_min_size(Some(logical_size));
+        let _ = win.set_max_size(Some(logical_size));
+        let _ = win.set_resizable(false);
+    }
+
+    if let (Some(x), Some(y)) = (config.x, config.y) {
+        if x.is_finite() && y.is_finite() {
+            let _ = win.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
+        }
+    } else if show_if_hidden && was_hidden {
+        if let Some(pos) = default_widget_position(app, config.width, config.height) {
+            let _ = win.set_position(PhysicalPosition::new(pos.x.round() as i32, pos.y.round() as i32));
+        }
+    }
+
+    if win.is_visible().unwrap_or(false) || !config.pinned_to_desktop {
+        apply_widget_desktop_mode(&win, config.pinned_to_desktop)?;
+    }
+
+    win.set_ignore_cursor_events(false).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // --- Windows 桌面钉入 ---
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 mod win_desktop {
     use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -405,40 +665,53 @@ mod win_desktop {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn apply_widget_desktop_mode(win: &WebviewWindow, pinned: bool) -> Result<(), String> {
+    if pinned {
+        win.set_always_on_top(false).map_err(|e| e.to_string())?;
+        let hwnd = win.hwnd().map_err(|e| e.to_string())?;
+        win_desktop::pin_window_to_bottom(hwnd.0 as isize);
+
+        if PINNED_BOTTOM
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            let win_clone = win.clone();
+            tauri::async_runtime::spawn(async move {
+                while PINNED_BOTTOM.load(Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                    if let Ok(hwnd) = win_clone.hwnd() {
+                        win_desktop::pin_window_to_bottom(hwnd.0 as isize);
+                    }
+                }
+            });
+        }
+    } else {
+        PINNED_BOTTOM.store(false, Ordering::SeqCst);
+        let hwnd = win.hwnd().map_err(|e| e.to_string())?;
+        win_desktop::unpin_window_from_bottom(hwnd.0 as isize);
+        win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_widget_desktop_mode(win: &WebviewWindow, pinned: bool) -> Result<(), String> {
+    win.set_always_on_top(!pinned).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub fn embed_widget_to_desktop(app: tauri::AppHandle) -> Result<(), String> {
-    let win = app
+    let _win = app
         .get_webview_window("widget")
         .ok_or("小组件窗口不存在，请先打开小组件")?;
 
-    if !win.is_visible().unwrap_or(false) {
-        win.show().map_err(|e| e.to_string())?;
-    }
-
-    // Remove topmost so the window can live in the normal desktop layer.
-    win.set_always_on_top(false).map_err(|e| e.to_string())?;
-
-    let hwnd = win.hwnd().map_err(|e| e.to_string())?;
-
-    // Windows 10/11: cross-process SetParent into Explorer's WorkerW breaks
-    // WebView2 rendering and clips the window to WorkerW's tiny 262x71 rect.
-    // Instead, keep the window as a popup and pin it to the bottom of the
-    // z-order so it stays behind all other apps (desktop-widget behaviour).
-    win_desktop::pin_window_to_bottom(hwnd.0 as isize);
-
-    // Keep the window at the bottom of the z-order every 2s so it does not
-    // get pushed above normal apps when the user interacts with the desktop.
-    PINNED_BOTTOM.store(true, Ordering::SeqCst);
-    let win_clone = win.clone();
-    tauri::async_runtime::spawn(async move {
-        while PINNED_BOTTOM.load(Ordering::SeqCst) {
-            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
-            if let Ok(hwnd) = win_clone.hwnd() {
-                win_desktop::pin_window_to_bottom(hwnd.0 as isize);
-            }
-        }
-    });
+    let mut config = load_widget_config(app.clone())?;
+    config.pinned_to_desktop = true;
+    save_widget_config_internal(&app, &config)?;
+    apply_widget_config_to_existing_window(&app, &config, true)?;
 
     eprintln!("[Widget] pinned to bottom (desktop layer)");
     Ok(())
@@ -447,17 +720,14 @@ pub fn embed_widget_to_desktop(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub fn unpin_widget_from_desktop(app: tauri::AppHandle) -> Result<(), String> {
-    PINNED_BOTTOM.store(false, Ordering::SeqCst);
-
     let win = app
         .get_webview_window("widget")
         .ok_or("小组件窗口不存在")?;
 
-    let hwnd = win.hwnd().map_err(|e| e.to_string())?;
-    win_desktop::unpin_window_from_bottom(hwnd.0 as isize);
-
-    // Restore topmost so the widget floats above normal windows again.
-    win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    let mut config = load_widget_config(app.clone())?;
+    config.pinned_to_desktop = false;
+    save_widget_config_internal(&app, &config)?;
+    apply_widget_desktop_mode(&win, false)?;
 
     eprintln!("[Widget] unpinned from bottom");
     Ok(())

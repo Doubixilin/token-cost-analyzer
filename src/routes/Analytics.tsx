@@ -3,8 +3,8 @@ import ReactECharts from "echarts-for-react";
 import echarts from "../utils/echarts-setup";
 import { FileSpreadsheet } from "lucide-react";
 import { useStatsStore } from "../stores/useStatsStore";
-import { getDistribution, getHeatmapData, getTopN } from "../api/tauriCommands";
-import type { DistributionItem, HeatmapPoint, TopNItem } from "../types";
+import { getDistribution, getHeatmapData, getOverviewStats, getTopN, getTrendData } from "../api/tauriCommands";
+import type { DistributionItem, HeatmapPoint, OverviewStats, TopNItem, TrendPoint } from "../types";
 import { formatTokens } from "../utils/formatter";
 import { exportExcelReport } from "../utils/excelExport";
 import { getChartColors } from "../utils/chartColors";
@@ -13,10 +13,11 @@ import AdvancedAnalytics from "../components/AdvancedAnalytics";
 export default function Analytics() {
   const filters = useStatsStore((s) => s.filters);
   const refreshVersion = useStatsStore((s) => s.refreshVersion);
-  const overview = useStatsStore((s) => s.overview);
-  const trendData = useStatsStore((s) => s.trendData);
   const theme = useStatsStore((s) => s.theme);
+  const costDisplaySettings = useStatsStore((s) => s.costDisplaySettings);
   const cc = getChartColors(theme);
+  const [reportOverview, setReportOverview] = useState<OverviewStats | null>(null);
+  const [reportTrendData, setReportTrendData] = useState<TrendPoint[]>([]);
   const [modelDist, setModelDist] = useState<DistributionItem[]>([]);
   const [sourceDist, setSourceDist] = useState<DistributionItem[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
@@ -28,13 +29,17 @@ export default function Analytics() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
+      getOverviewStats(filters),
+      getTrendData(filters, "day"),
       getDistribution(filters, "model"),
       getDistribution(filters, "source"),
       getHeatmapData(filters, currentYear),
       getTopN(filters, "session", "tokens", 10),
     ])
-      .then(([models, sources, heatmap, top]) => {
+      .then(([stats, trend, models, sources, heatmap, top]) => {
         if (cancelled) return;
+        setReportOverview(stats);
+        setReportTrendData(trend);
         setModelDist(models);
         setSourceDist(sources);
         setHeatmapData(heatmap);
@@ -160,11 +165,12 @@ export default function Analytics() {
     setReportLoading(true);
     try {
       exportExcelReport({
-        overview,
+        overview: reportOverview,
         modelDist,
         sourceDist,
         topSessions,
-        trendData,
+        trendData: reportTrendData,
+        costDisplaySettings,
       });
     } catch (e) {
       console.error("Report export failed:", e);

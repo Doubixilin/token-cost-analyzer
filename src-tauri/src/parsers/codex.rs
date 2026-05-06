@@ -18,6 +18,8 @@ struct CodexEvent {
 struct TokenCountInfo {
     #[serde(rename = "last_token_usage")]
     last_token_usage: Option<TokenUsage>,
+    #[serde(rename = "total_token_usage")]
+    total_token_usage: Option<TokenUsage>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,7 +50,16 @@ pub fn find_codex_sessions() -> Option<PathBuf> {
 fn parse_iso_timestamp(ts: &str) -> Option<f64> {
     chrono::DateTime::parse_from_rfc3339(ts)
         .ok()
-        .map(|dt| dt.timestamp() as f64)
+        .map(|dt| dt.timestamp_millis() as f64 / 1000.0)
+}
+
+fn usage_signature(usage: &TokenUsage) -> (i64, i64, i64, i64) {
+    (
+        usage.input_tokens,
+        usage.output_tokens,
+        usage.cached_input_tokens.unwrap_or(0),
+        usage.reasoning_output_tokens.unwrap_or(0),
+    )
 }
 
 fn extract_session_id_from_filename(path: &Path) -> Option<String> {
@@ -83,6 +94,7 @@ fn parse_codex_file(
     let mut current_session_id = filename_session_id.clone();
     let mut current_model: Option<String> = None;
     let mut current_cwd: Option<String> = None;
+    let mut last_total_usage_signature: Option<(i64, i64, i64, i64)> = None;
 
     for (line_no, line) in reader.lines().enumerate() {
         let line = match line {
@@ -139,13 +151,23 @@ fn parse_codex_file(
                     }
                 };
 
-                let usage = match info.last_token_usage {
+                let usage = match info.last_token_usage.as_ref() {
                     Some(u) => u,
                     None => continue,
                 };
+                let total_signature = info
+                    .total_token_usage
+                    .as_ref()
+                    .map(usage_signature)
+                    .unwrap_or_else(|| usage_signature(usage));
+                if last_total_usage_signature.as_ref() == Some(&total_signature) {
+                    continue;
+                }
+                last_total_usage_signature = Some(total_signature);
 
                 // Skip zero-usage records (they don't provide meaningful data)
-                if usage.input_tokens == 0 && usage.output_tokens == 0 {
+                let cache_read_tokens = usage.cached_input_tokens.unwrap_or(0);
+                if usage.input_tokens == 0 && usage.output_tokens == 0 && cache_read_tokens == 0 {
                     continue;
                 }
 
@@ -161,7 +183,7 @@ fn parse_codex_file(
                     model: current_model.clone(),
                     input_tokens: usage.input_tokens,
                     output_tokens: usage.output_tokens,
-                    cache_read_tokens: usage.cached_input_tokens.unwrap_or(0),
+                    cache_read_tokens,
                     cache_creation_tokens: 0, // Codex doesn't seem to expose this separately
                     project_path: current_cwd.clone().or_else(|| Some(project_path.clone())),
                     message_id: None,
@@ -219,6 +241,65 @@ pub fn parse_all_codex_records(
 
     progress_cb("codex", total_files, total_files);
     Ok(all_records)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+
+    #[test]
+    fn parse_iso_timestamp_preserves_milliseconds() {
+        let ts = parse_iso_timestamp("2026-05-06T00:55:15.751Z").unwrap();
+
+        assert!((ts - 1_778_028_915.751).abs() < 0.001);
+    }
+
+    #[test]
+    fn parse_codex_file_skips_duplicate_token_count_status_events() {
+        let root = std::env::temp_dir().join(format!(
+            "token_cost_codex_parser_test_{}",
+            std::process::id()
+        ));
+        let sessions_dir = root.join("sessions");
+        fs::create_dir_all(&sessions_dir).unwrap();
+        let file_path = sessions_dir.join("rollout-test.jsonl");
+        let mut file = fs::File::create(&file_path).unwrap();
+
+        writeln!(
+            file,
+            r#"{{"timestamp":"2026-05-06T00:55:10.000Z","type":"session_meta","payload":{{"id":"session-a","cwd":"D:/work"}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"timestamp":"2026-05-06T00:55:11.000Z","type":"turn_context","payload":{{"model":"gpt-5.4"}}}}"#
+        )
+        .unwrap();
+        for ts in ["2026-05-06T00:55:15.751Z", "2026-05-06T00:55:25.516Z"] {
+            writeln!(
+                file,
+                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"token_count","info":{{"last_token_usage":{{"input_tokens":23004,"cached_input_tokens":6528,"output_tokens":67,"reasoning_output_tokens":49,"total_tokens":23071}},"total_token_usage":{{"input_tokens":23004,"cached_input_tokens":6528,"output_tokens":67,"reasoning_output_tokens":49,"total_tokens":23071}}}}}}}}"#,
+                ts
+            )
+            .unwrap();
+        }
+        writeln!(
+            file,
+            r#"{{"timestamp":"2026-05-06T00:55:28.602Z","type":"event_msg","payload":{{"type":"token_count","info":{{"last_token_usage":{{"input_tokens":24831,"cached_input_tokens":22912,"output_tokens":46,"reasoning_output_tokens":28,"total_tokens":24877}},"total_token_usage":{{"input_tokens":47835,"cached_input_tokens":29440,"output_tokens":113,"reasoning_output_tokens":77,"total_tokens":47948}}}}}}}}"#
+        )
+        .unwrap();
+        drop(file);
+
+        let records = parse_codex_file(&file_path, &sessions_dir).unwrap();
+        fs::remove_dir_all(&root).ok();
+
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].input_tokens, 23004);
+        assert_eq!(records[0].cache_read_tokens, 6528);
+        assert_eq!(records[1].input_tokens, 24831);
+    }
 }
 
 /// Parse only selected Codex files (for incremental sync)
